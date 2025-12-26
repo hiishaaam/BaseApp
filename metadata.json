@@ -1,0 +1,7 @@
+{
+  "name": "EduFace Attendance",
+  "description": "A production-ready Face Recognition Attendance System for colleges using Gemini AI for high-accuracy identity verification.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
