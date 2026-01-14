@@ -3,7 +3,7 @@ import Camera from './Camera';
 import { db } from '../services/dbService';
 import { verifyFaceWithGemini } from '../services/geminiService';
 import { AttendanceRecord, AttendanceStatus, Student, Subject } from '../types';
-import { CheckCircle, XCircle, Clock, Calendar, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, X, Clock, ScanFace, Loader2 } from 'lucide-react';
 
 interface Props {
   onSuccess: (student: Student) => void;
@@ -12,77 +12,60 @@ interface Props {
 
 const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
   const [status, setStatus] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS' | 'ERROR'>('IDLE');
-  const [message, setMessage] = useState('Position your face within the frame.');
+  const [message, setMessage] = useState('Position your face within the frame');
   const [matchDetails, setMatchDetails] = useState<{ studentName: string; confidence: number } | null>(null);
   const [activeSubject, setActiveSubject] = useState<Subject | null>(null);
 
-  // Determine current active subject based on time
   useEffect(() => {
     const now = new Date();
     const currentHour = now.getHours();
     const subjects = db.getSubjects();
-    
-    // Simple logic: find subject that is happening NOW
     const subject = subjects.find(s => {
       const startH = parseInt(s.startTime.split(':')[0]);
       const endH = parseInt(s.endTime.split(':')[0]);
       return currentHour >= startH && currentHour < endH;
     });
-
-    // Fallback for demo if no class is active, just pick the first one
     setActiveSubject(subject || subjects[0]);
   }, []);
 
   const handleCapture = async (capturedImage: string) => {
     if (status === 'PROCESSING') return;
     setStatus('PROCESSING');
-    setMessage('Verifying identity with Gemini AI...');
+    setMessage('Analyzing biometric data...');
 
     const students = db.getStudents().filter(s => s.isApproved && s.faceEmbeddings);
     
     if (students.length === 0) {
       setStatus('ERROR');
-      setMessage("No approved students in database.");
+      setMessage("Database empty.");
       return;
     }
 
+    // Demo optimization: verify against latest 3 students
+    const candidates = [...students].reverse().slice(0, 3); 
     let matchedStudent: Student | null = null;
     let highestConfidence = 0;
-    let apiErrorOccurred = false;
-    let lastErrorMessage = "";
-
-    // For demo efficiency: Check the most recently created student first
-    const candidates = [...students].reverse().slice(0, 3); 
 
     for (const student of candidates) {
        if (!student.faceEmbeddings) continue;
-       
        const result = await verifyFaceWithGemini(student.faceEmbeddings, capturedImage);
-       
        if (result.match) {
          matchedStudent = student;
          highestConfidence = result.confidence;
-         break; // Found match
-       }
-       
-       if (result.error) {
-         apiErrorOccurred = true;
-         lastErrorMessage = result.message;
+         break;
        }
     }
 
     if (matchedStudent && activeSubject) {
-      // Check for duplicate attendance
       const today = new Date().toISOString().split('T')[0];
       const hasMarked = db.hasMarkedAttendance(matchedStudent.id, activeSubject.code, today);
 
       if (hasMarked) {
         setStatus('ERROR');
-        setMessage(`Attendance already marked for ${activeSubject.name} today.`);
+        setMessage(`Already checked in for ${activeSubject.name}.`);
         return;
       }
 
-      // Mark Attendance
       const record: AttendanceRecord = {
         id: crypto.randomUUID(),
         studentId: matchedStudent.id,
@@ -96,75 +79,84 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
       };
       
       db.addAttendance(record);
-      
       setMatchDetails({ studentName: matchedStudent.name, confidence: highestConfidence });
       setStatus('SUCCESS');
-      setMessage('Attendance Marked Successfully!');
       
-      // Auto redirect after 3s
-      setTimeout(() => onSuccess(matchedStudent!), 3000);
+      setTimeout(() => onSuccess(matchedStudent!), 2500);
 
     } else {
        setStatus('ERROR');
-       if (apiErrorOccurred) {
-          setMessage(`Verification System Error: ${lastErrorMessage}`);
-       } else if (!activeSubject) {
-          setMessage("No active classes found at this time.");
-       } else {
-          setMessage("Face not recognized. Please remove glasses/masks and try again.");
-       }
+       setMessage(matchedStudent ? "No active class found." : "Face not recognized. Try again.");
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full max-w-2xl mx-auto p-4">
+    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-100px)] w-full max-w-4xl mx-auto p-6 animate-fade-in">
+       
+       {/* Active Class Indicator */}
        {activeSubject && (
-         <div className="mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200 w-full flex justify-between items-center">
-            <div>
-              <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Current Class</p>
-              <h3 className="text-lg font-bold text-slate-800">{activeSubject.name}</h3>
-              <p className="text-sm text-slate-600">{activeSubject.code} • {activeSubject.startTime} - {activeSubject.endTime}</p>
-            </div>
-            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
-               <Clock className="w-6 h-6" />
+         <div className="mb-8 flex items-center gap-4 bg-white/60 backdrop-blur-md px-6 py-3 rounded-full border border-white/50 shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Session</span>
+               <span className="text-sm font-semibold text-slate-800">{activeSubject.name} <span className="text-slate-400 font-normal">({activeSubject.startTime} - {activeSubject.endTime})</span></span>
             </div>
          </div>
        )}
 
-       {status === 'SUCCESS' && matchDetails ? (
-         <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center animate-fade-in w-full">
-            <div className="inline-flex bg-green-100 p-4 rounded-full mb-4">
-              <CheckCircle className="w-16 h-16 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-green-800 mb-2">Attendance Marked!</h2>
-            <p className="text-lg text-green-700 font-medium">Welcome, {matchDetails.studentName}</p>
-            <div className="mt-4 flex justify-center space-x-4 text-sm text-green-600">
-               <span className="flex items-center"><Calendar className="w-4 h-4 mr-1"/> {new Date().toLocaleDateString()}</span>
-               <span className="flex items-center"><Clock className="w-4 h-4 mr-1"/> {new Date().toLocaleTimeString()}</span>
-            </div>
-            <p className="mt-2 text-xs text-green-500">Confidence: {matchDetails.confidence}%</p>
-         </div>
-       ) : (
-         <div className="w-full">
-            <Camera 
-              onCapture={handleCapture} 
-              autoCapture={status === 'IDLE' || status === 'ERROR'} // Retry automatically if idle or error
-              isProcessing={status === 'PROCESSING'}
-              label="Scan Face"
-            />
-            
-            <div className={`mt-6 p-4 rounded-lg text-center font-medium transition-colors duration-300
-              ${status === 'ERROR' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-white text-slate-600'}
-            `}>
-              {status === 'ERROR' && <AlertTriangle className="inline-block w-5 h-5 mr-2 -mt-1" />}
-              {message}
-            </div>
+       <div className="relative w-full max-w-lg aspect-[3/4] md:aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl ring-8 ring-slate-100 dark:ring-slate-800">
+         
+         {/* Status Overlays */}
+         {status === 'SUCCESS' && matchDetails ? (
+           <div className="absolute inset-0 z-20 bg-emerald-500/90 backdrop-blur-sm flex flex-col items-center justify-center text-white animate-fade-in">
+              <div className="bg-white text-emerald-600 rounded-full p-6 shadow-xl mb-6 transform scale-110">
+                <CheckCircle2 className="w-16 h-16" />
+              </div>
+              <h2 className="text-3xl font-bold tracking-tight">Verified</h2>
+              <p className="text-emerald-100 mt-2 text-lg font-medium">{matchDetails.studentName}</p>
+              <div className="mt-8 bg-black/20 px-4 py-2 rounded-lg font-mono text-sm">
+                 Confidence: {matchDetails.confidence}%
+              </div>
+           </div>
+         ) : (
+           <>
+              <Camera 
+                onCapture={handleCapture} 
+                autoCapture={status === 'IDLE' || status === 'ERROR'}
+                isProcessing={status === 'PROCESSING'}
+                label="Scan Face"
+              />
+              
+              {/* HUD Overlay */}
+              <div className="absolute inset-0 pointer-events-none z-10">
+                 {/* Corners */}
+                 <div className="absolute top-6 left-6 w-12 h-12 border-t-4 border-l-4 border-white/30 rounded-tl-xl" />
+                 <div className="absolute top-6 right-6 w-12 h-12 border-t-4 border-r-4 border-white/30 rounded-tr-xl" />
+                 <div className="absolute bottom-6 left-6 w-12 h-12 border-b-4 border-l-4 border-white/30 rounded-bl-xl" />
+                 <div className="absolute bottom-6 right-6 w-12 h-12 border-b-4 border-r-4 border-white/30 rounded-br-xl" />
+                 
+                 {/* Status Message */}
+                 <div className="absolute bottom-10 left-0 right-0 flex justify-center">
+                    <div className={`
+                      px-6 py-2 rounded-full backdrop-blur-md font-medium text-sm border flex items-center gap-2 shadow-lg transition-all duration-300
+                      ${status === 'ERROR' ? 'bg-red-500/80 border-red-400 text-white' : 
+                        status === 'PROCESSING' ? 'bg-indigo-500/80 border-indigo-400 text-white' : 
+                        'bg-black/50 border-white/10 text-white'}
+                    `}>
+                       {status === 'PROCESSING' && <Loader2 className="w-4 h-4 animate-spin" />}
+                       {status === 'ERROR' && <AlertTriangle className="w-4 h-4" />}
+                       {status === 'IDLE' && <ScanFace className="w-4 h-4" />}
+                       {message}
+                    </div>
+                 </div>
+              </div>
+           </>
+         )}
+       </div>
 
-            <button onClick={onBack} className="mt-8 w-full py-3 text-slate-500 hover:text-slate-800 font-medium">
-               Cancel Login
-            </button>
-         </div>
-       )}
+       <button onClick={onBack} className="mt-8 flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors font-medium">
+          <X className="w-4 h-4" /> Cancel Check-in
+       </button>
     </div>
   );
 };

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { db } from '../services/dbService';
-import { AttendanceRecord, Student, AttendanceStatus } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Download, Check, X, Users, ClipboardCheck, AlertOctagon, Trash2, UserCheck } from 'lucide-react';
+import { AttendanceRecord, Student } from '../types';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Download, Check, X, Users, ClipboardCheck, AlertOctagon, Trash2, Filter, MoreHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'students' | 'reports'>('overview');
-  const [refresh, setRefresh] = useState(0); // Force re-render
+  const [refresh, setRefresh] = useState(0);
 
   const students = db.getStudents();
   const attendance = db.getAttendance();
@@ -19,7 +19,6 @@ const AdminDashboard: React.FC = () => {
       if (approve) {
         db.updateStudent({ ...student, isApproved: true });
       } else {
-        // In a real app, delete or mark rejected
         const filtered = students.filter(s => s.id !== id);
         localStorage.setItem('eduface_students', JSON.stringify(filtered));
       }
@@ -37,10 +36,7 @@ const AdminDashboard: React.FC = () => {
       r.status,
       new Date(r.timestamp).toLocaleTimeString()
     ]);
-    
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -49,287 +45,335 @@ const AdminDashboard: React.FC = () => {
     link.click();
   };
 
-  // Stats for Charts
+  // Stats Logic
   const deptStats = db.getDepartments().map(dept => {
     const deptStudents = approvedStudents.filter(s => s.department === dept.name).length;
     const deptAttendance = attendance.filter(a => a.department === dept.name).length;
     return { name: dept.id.toUpperCase(), students: deptStudents, present: deptAttendance };
   });
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+  const presentToday = attendance.filter(a => a.date === new Date().toISOString().split('T')[0]).length;
+  const attendanceRate = approvedStudents.length > 0 ? Math.round((presentToday / approvedStudents.length) * 100) : 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Tab Navigation */}
-      <div className="flex space-x-1 bg-white p-1 rounded-xl shadow-sm border border-slate-200 inline-flex flex-wrap">
+    <div className="space-y-8 animate-fade-in">
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-slate-200">
         {[
           { id: 'overview', label: 'Overview' },
-          { id: 'approvals', label: 'Approvals' },
-          { id: 'students', label: 'Approved Students' },
-          { id: 'reports', label: 'Attendance Reports' }
+          { id: 'approvals', label: 'Approvals', count: pendingStudents.length, alert: true },
+          { id: 'students', label: 'Students', count: approvedStudents.length },
+          { id: 'reports', label: 'Reports' }
         ].map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all flex items-center ${
-              activeTab === tab.id ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:bg-slate-50'
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
+              activeTab === tab.id 
+                ? 'border-indigo-600 text-indigo-600' 
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
             }`}
           >
             {tab.label}
-            {tab.id === 'approvals' && pendingStudents.length > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{pendingStudents.length}</span>
-            )}
-             {tab.id === 'students' && (
-              <span className="ml-2 bg-slate-200 text-slate-600 text-xs px-1.5 py-0.5 rounded-full">{approvedStudents.length}</span>
+            {tab.count !== undefined && tab.count > 0 && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                tab.alert ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {tab.count}
+              </span>
             )}
           </button>
         ))}
       </div>
 
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div className="space-y-8">
+          {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-               <div className="flex items-center justify-between">
-                 <div>
-                   <p className="text-slate-500 text-sm font-medium">Total Students</p>
-                   <h3 className="text-3xl font-bold text-slate-800">{approvedStudents.length}</h3>
-                 </div>
-                 <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Users /></div>
-               </div>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-               <div className="flex items-center justify-between">
-                 <div>
-                   <p className="text-slate-500 text-sm font-medium">Present Today</p>
-                   <h3 className="text-3xl font-bold text-slate-800">
-                     {attendance.filter(a => a.date === new Date().toISOString().split('T')[0]).length}
-                   </h3>
-                 </div>
-                 <div className="bg-green-100 p-3 rounded-full text-green-600"><ClipboardCheck /></div>
-               </div>
-            </div>
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-               <div className="flex items-center justify-between">
-                 <div>
-                   <p className="text-slate-500 text-sm font-medium">Pending Approvals</p>
-                   <h3 className="text-3xl font-bold text-slate-800">{pendingStudents.length}</h3>
-                 </div>
-                 <div className="bg-amber-100 p-3 rounded-full text-amber-600"><AlertOctagon /></div>
-               </div>
-            </div>
+            <StatCard 
+              title="Total Enrolled" 
+              value={approvedStudents.length} 
+              change="+12%" 
+              trend="up"
+              icon={<Users className="w-5 h-5 text-indigo-600" />} 
+            />
+            <StatCard 
+              title="Present Today" 
+              value={presentToday} 
+              subValue={`${attendanceRate}% Rate`}
+              change="+5%" 
+              trend="up"
+              icon={<ClipboardCheck className="w-5 h-5 text-emerald-600" />} 
+            />
+            <StatCard 
+              title="Pending Approval" 
+              value={pendingStudents.length} 
+              change="Action Required" 
+              trend="neutral"
+              icon={<AlertOctagon className="w-5 h-5 text-amber-600" />} 
+              urgent={pendingStudents.length > 0}
+            />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-80">
-              <h4 className="text-lg font-bold text-slate-800 mb-4">Department Attendance</h4>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={deptStats}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="students" fill="#94a3b8" name="Total Students" />
-                  <Bar dataKey="present" fill="#3b82f6" name="Present" />
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-bold text-slate-800">Department Performance</h3>
+                <button className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition">View Details</button>
+              </div>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={deptStats} barSize={32}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} />
+                    <Tooltip 
+                      cursor={{fill: '#f1f5f9'}}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    />
+                    <Bar dataKey="students" fill="#e2e8f0" radius={[4, 4, 0, 0]} name="Total" />
+                    <Bar dataKey="present" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Present" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 h-80">
-              <h4 className="text-lg font-bold text-slate-800 mb-4">Attendance Distribution</h4>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Present', value: attendance.length },
-                      { name: 'Absent', value: (approvedStudents.length * 1) - attendance.length } // Simplified math
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {deptStats.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === 0 ? '#22c55e' : '#ef4444'} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
+              <h3 className="font-bold text-slate-800 mb-6">Daily Attendance</h3>
+              <div className="flex-1 flex items-center justify-center relative">
+                 <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Present', value: presentToday },
+                        { name: 'Absent', value: Math.max(0, approvedStudents.length - presentToday) }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      <Cell fill="#10b981" />
+                      <Cell fill="#f1f5f9" />
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-3xl font-bold text-slate-800">{attendanceRate}%</span>
+                  <span className="text-xs text-slate-500 uppercase font-semibold">Turnout</span>
+                </div>
+              </div>
+              <div className="mt-6 space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                   <div className="flex items-center gap-2">
+                     <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                     <span className="text-slate-600">Present</span>
+                   </div>
+                   <span className="font-semibold text-slate-900">{presentToday}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                   <div className="flex items-center gap-2">
+                     <div className="w-3 h-3 rounded-full bg-slate-200" />
+                     <span className="text-slate-600">Absent</span>
+                   </div>
+                   <span className="font-semibold text-slate-900">{Math.max(0, approvedStudents.length - presentToday)}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'approvals' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-           <div className="p-4 border-b border-slate-200 bg-amber-50">
-              <h3 className="font-bold text-amber-800 flex items-center">
-                <AlertOctagon className="w-5 h-5 mr-2" /> Pending Registration Requests
-              </h3>
-           </div>
-           <table className="w-full text-left">
-             <thead className="bg-slate-50 border-b border-slate-200">
-               <tr>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Student</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Dept</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Year</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Action</th>
-               </tr>
-             </thead>
-             <tbody>
-               {pendingStudents.length === 0 ? (
-                 <tr>
-                   <td colSpan={4} className="p-8 text-center text-slate-500">No pending approvals.</td>
+        <Card title="Pending Registration Requests" icon={<AlertOctagon className="w-5 h-5 text-amber-500" />}>
+           <div className="overflow-x-auto">
+             <table className="w-full text-left border-collapse">
+               <thead>
+                 <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                   <th className="p-4 font-semibold">Candidate</th>
+                   <th className="p-4 font-semibold">Department</th>
+                   <th className="p-4 font-semibold">Details</th>
+                   <th className="p-4 font-semibold text-right">Actions</th>
                  </tr>
-               ) : (
-                 pendingStudents.map(student => (
-                   <tr key={student.id} className="border-b border-slate-100">
-                     <td className="p-4">
-                       <div className="flex items-center space-x-3">
-                         {student.faceEmbeddings && (
-                           <img src={student.faceEmbeddings} alt="Face" className="w-10 h-10 rounded-full object-cover border" />
-                         )}
-                         <div>
-                           <p className="font-medium text-slate-800">{student.name}</p>
-                           <p className="text-xs text-slate-500">{student.admissionNumber}</p>
+               </thead>
+               <tbody className="divide-y divide-slate-50">
+                 {pendingStudents.length === 0 ? (
+                   <tr><td colSpan={4} className="p-8 text-center text-slate-400 text-sm">No pending approvals found.</td></tr>
+                 ) : (
+                   pendingStudents.map(student => (
+                     <tr key={student.id} className="group hover:bg-slate-50 transition-colors">
+                       <td className="p-4">
+                         <div className="flex items-center gap-3">
+                           {student.faceEmbeddings ? (
+                             <img src={student.faceEmbeddings} alt="" className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-sm" />
+                           ) : (
+                             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"><Users className="w-5 h-5" /></div>
+                           )}
+                           <div>
+                             <p className="font-semibold text-slate-900 text-sm">{student.name}</p>
+                             <p className="text-xs text-slate-500 font-mono">{student.email}</p>
+                           </div>
                          </div>
-                       </div>
-                     </td>
-                     <td className="p-4 text-slate-600 text-sm">{student.department}</td>
-                     <td className="p-4 text-slate-600 text-sm">{student.year}</td>
-                     <td className="p-4">
-                       <div className="flex space-x-2">
-                         <button onClick={() => handleApprove(student.id, true)} className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200" title="Approve"><Check className="w-4 h-4" /></button>
-                         <button onClick={() => handleApprove(student.id, false)} className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200" title="Reject"><X className="w-4 h-4" /></button>
-                       </div>
-                     </td>
-                   </tr>
-                 ))
-               )}
-             </tbody>
-           </table>
-        </div>
+                       </td>
+                       <td className="p-4 text-sm text-slate-600">{student.department}</td>
+                       <td className="p-4">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                            {student.year} Year • Sec {student.section}
+                          </span>
+                       </td>
+                       <td className="p-4 text-right">
+                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                           <button onClick={() => handleApprove(student.id, true)} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 shadow-sm transition-all">
+                             <Check className="w-3 h-3" /> Approve
+                           </button>
+                           <button onClick={() => handleApprove(student.id, false)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg hover:bg-slate-50 hover:text-red-600 transition-all">
+                             <X className="w-3 h-3" /> Reject
+                           </button>
+                         </div>
+                       </td>
+                     </tr>
+                   ))
+                 )}
+               </tbody>
+             </table>
+           </div>
+        </Card>
       )}
 
       {activeTab === 'students' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-           <div className="p-4 border-b border-slate-200 bg-blue-50">
-              <h3 className="font-bold text-blue-800 flex items-center">
-                <UserCheck className="w-5 h-5 mr-2" /> Registered Students
-              </h3>
-           </div>
-           <table className="w-full text-left">
-             <thead className="bg-slate-50 border-b border-slate-200">
-               <tr>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Student</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Email</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Dept / Year</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Section</th>
-                 <th className="p-4 font-semibold text-slate-600 text-sm">Action</th>
-               </tr>
-             </thead>
-             <tbody>
-               {approvedStudents.length === 0 ? (
-                 <tr>
-                   <td colSpan={5} className="p-8 text-center text-slate-500">No students found.</td>
+        <Card title="Student Directory" icon={<Users className="w-5 h-5 text-indigo-500" />}>
+           <div className="overflow-x-auto">
+             <table className="w-full text-left">
+               <thead>
+                 <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                   <th className="p-4 font-semibold">Student</th>
+                   <th className="p-4 font-semibold">Admission No</th>
+                   <th className="p-4 font-semibold">Cohort</th>
+                   <th className="p-4 font-semibold text-right">Menu</th>
                  </tr>
-               ) : (
-                 approvedStudents.map(student => (
-                   <tr key={student.id} className="border-b border-slate-100 hover:bg-slate-50">
+               </thead>
+               <tbody className="divide-y divide-slate-50">
+                 {approvedStudents.map(student => (
+                   <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
                      <td className="p-4">
-                       <div className="flex items-center space-x-3">
-                         {student.faceEmbeddings && (
-                           <div className="relative group">
-                              <img src={student.faceEmbeddings} alt="Face" className="w-10 h-10 rounded-full object-cover border" />
-                              <div className="absolute hidden group-hover:block bottom-full left-1/2 -translate-x-1/2 mb-2 p-1 bg-white border shadow-lg rounded-lg z-10">
-                                <img src={student.faceEmbeddings} alt="Face Large" className="w-24 h-24 object-cover rounded-md" />
-                              </div>
-                           </div>
-                         )}
+                       <div className="flex items-center gap-3">
+                         <div className="relative">
+                            <img src={student.faceEmbeddings} alt="" className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-100" />
+                            <div className="absolute inset-0 rounded-full shadow-inner"></div>
+                         </div>
                          <div>
-                           <p className="font-medium text-slate-800">{student.name}</p>
-                           <p className="text-xs text-slate-500">{student.admissionNumber}</p>
+                            <p className="font-medium text-slate-900 text-sm">{student.name}</p>
+                            <p className="text-xs text-slate-500">{student.email}</p>
                          </div>
                        </div>
                      </td>
-                     <td className="p-4 text-slate-600 text-sm">{student.email}</td>
-                     <td className="p-4 text-slate-600 text-sm">{student.department} - {student.year} Yr</td>
-                     <td className="p-4 text-slate-600 text-sm">{student.section}</td>
-                     <td className="p-4">
+                     <td className="p-4 text-sm font-mono text-slate-500">{student.admissionNumber}</td>
+                     <td className="p-4 text-sm text-slate-600">{student.department} / {student.year}</td>
+                     <td className="p-4 text-right">
                        <button 
-                        onClick={() => {
-                          if(window.confirm(`Are you sure you want to remove ${student.name}? This cannot be undone.`)) {
-                            handleApprove(student.id, false); // False triggers delete logic
-                          }
-                        }} 
-                        className="p-2 bg-slate-100 text-red-500 rounded-lg hover:bg-red-50 border border-slate-200 hover:border-red-200 transition"
-                        title="Remove Student"
+                        onClick={() => { if(window.confirm("Delete student?")) handleApprove(student.id, false); }}
+                        className="p-2 hover:bg-red-50 hover:text-red-600 rounded-lg text-slate-400 transition-colors"
                        >
                          <Trash2 className="w-4 h-4" />
                        </button>
                      </td>
                    </tr>
-                 ))
-               )}
-             </tbody>
-           </table>
-        </div>
+                 ))}
+               </tbody>
+             </table>
+           </div>
+        </Card>
       )}
 
       {activeTab === 'reports' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-           <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800">Attendance Log</h3>
-              <button onClick={exportCSV} className="flex items-center space-x-2 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-700">
-                <Download className="w-4 h-4" />
-                <span>Export CSV</span>
-              </button>
-           </div>
+        <Card title="Attendance Logs" icon={<Filter className="w-5 h-5 text-blue-500" />} action={<button onClick={exportCSV} className="text-sm font-medium text-indigo-600 hover:underline flex items-center gap-1"><Download className="w-4 h-4" /> CSV</button>}>
            <div className="overflow-x-auto">
              <table className="w-full text-left">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="p-4 font-semibold text-slate-600 text-sm">Time</th>
-                  <th className="p-4 font-semibold text-slate-600 text-sm">Student</th>
-                  <th className="p-4 font-semibold text-slate-600 text-sm">Subject</th>
-                  <th className="p-4 font-semibold text-slate-600 text-sm">Status</th>
-                  <th className="p-4 font-semibold text-slate-600 text-sm">Confidence</th>
+              <thead>
+                <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                  <th className="p-4 font-semibold">Time</th>
+                  <th className="p-4 font-semibold">Student</th>
+                  <th className="p-4 font-semibold">Subject</th>
+                  <th className="p-4 font-semibold">Confidence</th>
+                  <th className="p-4 font-semibold text-right">Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-50">
                 {attendance.slice().reverse().map(record => (
-                  <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-4 text-slate-600 text-sm">
-                      {new Date(record.timestamp).toLocaleString()}
+                  <tr key={record.id} className="hover:bg-slate-50">
+                    <td className="p-4 text-sm text-slate-500 font-mono">
+                      {new Date(record.timestamp).toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', month: 'short', day: 'numeric' })}
                     </td>
-                    <td className="p-4 font-medium text-slate-800">{record.studentName}</td>
-                    <td className="p-4 text-slate-600 text-sm"><span className="bg-slate-100 px-2 py-1 rounded">{record.subject}</span></td>
-                    <td className="p-4">
-                      <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-bold uppercase">
+                    <td className="p-4 font-medium text-sm text-slate-900">{record.studentName}</td>
+                    <td className="p-4 text-sm text-slate-600">
+                      <span className="inline-block bg-slate-100 px-2 py-0.5 rounded text-xs font-semibold">{record.subject}</span>
+                    </td>
+                    <td className="p-4 text-sm text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${record.verificationConfidence}%` }} />
+                        </div>
+                        <span className="text-xs">{Math.round(record.verificationConfidence)}%</span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
                         {record.status}
                       </span>
                     </td>
-                    <td className="p-4 text-slate-500 text-xs">
-                      {Math.round(record.verificationConfidence)}%
-                    </td>
                   </tr>
                 ))}
-                 {attendance.length === 0 && (
-                 <tr>
-                   <td colSpan={5} className="p-8 text-center text-slate-500">No attendance records found.</td>
-                 </tr>
-               )}
               </tbody>
              </table>
            </div>
-        </div>
+        </Card>
       )}
     </div>
   );
 };
+
+// UI Components for Dashboard
+const StatCard = ({ title, value, subValue, change, trend, icon, urgent }: any) => (
+  <div className={`p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md ${urgent ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+    <div className="flex items-start justify-between mb-4">
+      <div className={`p-2 rounded-lg ${urgent ? 'bg-amber-100' : 'bg-slate-50'}`}>
+        {icon}
+      </div>
+      {change && (
+        <div className={`flex items-center text-xs font-bold px-2 py-1 rounded-full ${
+          urgent ? 'bg-amber-200 text-amber-800' : 
+          trend === 'up' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+        }`}>
+          {trend === 'up' ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <MoreHorizontal className="w-3 h-3 mr-1" />}
+          {change}
+        </div>
+      )}
+    </div>
+    <div>
+      <h3 className={`text-sm font-medium ${urgent ? 'text-amber-800' : 'text-slate-500'}`}>{title}</h3>
+      <div className="flex items-baseline gap-2 mt-1">
+        <p className={`text-3xl font-bold ${urgent ? 'text-amber-900' : 'text-slate-900'}`}>{value}</p>
+        {subValue && <span className="text-sm text-slate-400 font-medium">{subValue}</span>}
+      </div>
+    </div>
+  </div>
+);
+
+const Card = ({ title, icon, action, children }: any) => (
+  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="flex items-center gap-2">
+        {icon}
+        <h3 className="font-bold text-slate-800">{title}</h3>
+      </div>
+      {action}
+    </div>
+    <div>{children}</div>
+  </div>
+);
 
 export default AdminDashboard;
