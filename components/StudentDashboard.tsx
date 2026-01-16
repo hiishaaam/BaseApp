@@ -11,12 +11,20 @@ interface Props {
 const StudentDashboard: React.FC<Props> = ({ student }) => {
   const allAttendance = db.getAttendance();
   const myAttendance = allAttendance.filter(a => a.studentId === student.id);
-  const totalClasses = Math.max(myAttendance.length + 5, 20); // Mock target
-  const percentage = Math.round((myAttendance.length / totalClasses) * 100);
+  
+  // Daily attendance stats logic
+  // Calculate since enrollment or a standard 30-day window
+  const enrollmentDate = new Date(student.createdAt);
+  const today = new Date();
+  const diffTime = Math.abs(today.getTime() - enrollmentDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  const totalPossibleDays = Math.max(diffDays, 1);
+  const percentage = Math.round((myAttendance.length / totalPossibleDays) * 100);
 
   const data = [
     { name: 'Present', value: myAttendance.length },
-    { name: 'Absent', value: totalClasses - myAttendance.length },
+    { name: 'Absent', value: Math.max(totalPossibleDays - myAttendance.length, 0) },
   ];
 
   return (
@@ -52,7 +60,7 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
 
             <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 text-center min-w-[120px]">
                <div className="text-3xl font-bold text-emerald-400">{percentage}%</div>
-               <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Attendance</div>
+               <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mt-1">Consistency</div>
             </div>
          </div>
       </div>
@@ -62,7 +70,7 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
            <div className="flex items-center gap-2 mb-6">
              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><BarChart2 className="w-5 h-5" /></div>
-             <h3 className="font-bold text-slate-800">Attendance Overview</h3>
+             <h3 className="font-bold text-slate-800">Daily Attendance</h3>
            </div>
            
            <div className="h-64 relative">
@@ -89,12 +97,12 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
            
            <div className="grid grid-cols-2 gap-4 mt-4 text-center">
               <div className="p-3 bg-slate-50 rounded-xl">
-                 <p className="text-xs text-slate-500 font-medium uppercase">Attended</p>
+                 <p className="text-xs text-slate-500 font-medium uppercase">Days Logged</p>
                  <p className="text-lg font-bold text-indigo-600">{myAttendance.length}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl">
-                 <p className="text-xs text-slate-500 font-medium uppercase">Missed</p>
-                 <p className="text-lg font-bold text-slate-400">{totalClasses - myAttendance.length}</p>
+                 <p className="text-xs text-slate-500 font-medium uppercase">Days Missed</p>
+                 <p className="text-lg font-bold text-slate-400">{Math.max(totalPossibleDays - myAttendance.length, 0)}</p>
               </div>
            </div>
         </div>
@@ -103,13 +111,13 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
         <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
            <div className="flex items-center gap-2 mb-6">
              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Clock className="w-5 h-5" /></div>
-             <h3 className="font-bold text-slate-800">Recent Activity</h3>
+             <h3 className="font-bold text-slate-800">Check-in History</h3>
            </div>
 
            <div className="space-y-4">
               {myAttendance.length === 0 ? (
                 <div className="py-12 text-center text-slate-400">
-                   <p>No attendance records found yet.</p>
+                   <p>No attendance logs found for your account.</p>
                 </div>
               ) : (
                 myAttendance.slice().reverse().map((record) => (
@@ -121,8 +129,8 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
                       </div>
                       <div className="flex-1">
                          <div className="flex justify-between items-start">
-                            <h4 className="font-bold text-slate-900">{record.subject}</h4>
-                            <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full border border-emerald-100">PRESENT</span>
+                            <h4 className="font-bold text-slate-900">System Check-in</h4>
+                            <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100">PRESENT</span>
                          </div>
                          <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {record.date}</span>

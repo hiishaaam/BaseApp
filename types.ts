@@ -62,3 +62,5 @@ export type ViewState =
   | 'ADMIN_LOGIN' 
   | 'ADMIN_DASHBOARD' 
   | 'STUDENT_DASHBOARD';
+
+export type AdminSection = 'overview' | 'approvals' | 'students' | 'reports' | 'settings';

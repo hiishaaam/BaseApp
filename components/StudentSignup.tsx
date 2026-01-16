@@ -132,12 +132,12 @@ const StudentSignup: React.FC<Props> = ({ onBack, onSuccess }) => {
                 </p>
               </div>
 
-              <div className="w-full max-w-md bg-slate-950 rounded-2xl overflow-hidden shadow-2xl relative group">
+              <div className="w-full max-w-md bg-slate-950 rounded-2xl overflow-hidden shadow-2xl relative group aspect-[3/4] md:aspect-video bg-black">
                  {!faceImage ? (
                    <Camera onCapture={handleCapture} label="Capture Reference" />
                  ) : (
-                   <div className="relative">
-                      <img src={faceImage} alt="Captured" className="w-full aspect-video object-cover opacity-80" />
+                   <div className="relative w-full h-full">
+                      <img src={faceImage} alt="Captured" className="w-full h-full object-cover opacity-80" />
                       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
                          <div className="bg-white/10 p-4 rounded-full backdrop-blur-md mb-4 border border-white/20">
                             <BadgeCheck className="w-12 h-12 text-emerald-400" />

@@ -52,6 +52,11 @@ class DBService {
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
   }
 
+  deleteStudent(id: string): void {
+    const students = this.getStudents().filter(s => s.id !== id);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+  }
+
   // Attendance
   getAttendance(): AttendanceRecord[] {
     return JSON.parse(localStorage.getItem(STORAGE_KEYS.ATTENDANCE) || '[]');
@@ -63,9 +68,10 @@ class DBService {
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
   }
 
-  hasMarkedAttendance(studentId: string, subjectCode: string, date: string): boolean {
+  // Refactored: One entry per student per day
+  hasMarkedAttendance(studentId: string, date: string): boolean {
     const records = this.getAttendance();
-    return records.some(r => r.studentId === studentId && r.subject === subjectCode && r.date === date);
+    return records.some(r => r.studentId === studentId && r.date === date);
   }
 
   // Helpers

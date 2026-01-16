@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
-import { ViewState, UserRole, Student } from './types';
+import { ViewState, UserRole, Student, AdminSection } from './types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './constants';
 import { db } from './services/dbService'; // Keep db import to ensure init runs
 import FaceLogin from './components/FaceLogin';
@@ -26,6 +26,7 @@ const Badge = ({ children, className }: BadgeProps) => (
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('LANDING');
+  const [adminSection, setAdminSection] = useState<AdminSection>('overview');
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; data?: any } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       setCurrentUser({ role: UserRole.ADMIN });
+      setAdminSection('overview');
       setView('ADMIN_DASHBOARD');
       setLoginError('');
     } else {
@@ -576,8 +578,10 @@ const App: React.FC = () => {
             userRole={currentUser?.role} 
             onLogout={handleLogout}
             title="Administrator"
+            currentSection={adminSection}
+            onNavigate={setAdminSection}
           >
-            <AdminDashboard />
+            <AdminDashboard view={adminSection} onNavigate={setAdminSection} />
           </Layout>
         );
 

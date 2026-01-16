@@ -1,12 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { db } from '../services/dbService';
-import { AttendanceRecord, Student } from '../types';
+import { AdminSection } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Download, Check, X, Users, ClipboardCheck, AlertOctagon, Trash2, Filter, MoreHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Download, Check, X, Users, ClipboardCheck, AlertOctagon, Trash2, Filter, MoreHorizontal, ArrowUpRight, Search, Calendar, RotateCcw } from 'lucide-react';
 
-const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'students' | 'reports'>('overview');
+interface Props {
+  view: AdminSection;
+  onNavigate: (section: AdminSection) => void;
+}
+
+const AdminDashboard: React.FC<Props> = ({ view, onNavigate }) => {
   const [refresh, setRefresh] = useState(0);
+  
+  // Filter States
+  const [searchName, setSearchName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   const students = db.getStudents();
   const attendance = db.getAttendance();
@@ -19,20 +28,37 @@ const AdminDashboard: React.FC = () => {
       if (approve) {
         db.updateStudent({ ...student, isApproved: true });
       } else {
-        const filtered = students.filter(s => s.id !== id);
-        localStorage.setItem('eduface_students', JSON.stringify(filtered));
+        db.deleteStudent(id);
       }
       setRefresh(prev => prev + 1);
     }
   };
 
+  const filteredAttendance = useMemo(() => {
+    return attendance.filter(record => {
+      const matchesName = record.studentName.toLowerCase().includes(searchName.toLowerCase());
+      const recordDate = new Date(record.date);
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
+      
+      let matchesDate = true;
+      if (start) {
+        matchesDate = matchesDate && recordDate >= start;
+      }
+      if (end) {
+        matchesDate = matchesDate && recordDate <= end;
+      }
+      
+      return matchesName && matchesDate;
+    }).slice().reverse();
+  }, [attendance, searchName, startDate, endDate]);
+
   const exportCSV = () => {
-    const headers = ['Date', 'Name', 'Department', 'Subject', 'Status', 'Time'];
-    const rows = attendance.map(r => [
+    const headers = ['Date', 'Name', 'Department', 'Status', 'Time'];
+    const rows = filteredAttendance.map(r => [
       r.date,
       r.studentName,
       r.department,
-      r.subject,
       r.status,
       new Date(r.timestamp).toLocaleTimeString()
     ]);
@@ -40,9 +66,15 @@ const AdminDashboard: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "attendance_report.csv");
+    link.setAttribute("download", `attendance_report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
+  };
+
+  const resetFilters = () => {
+    setSearchName('');
+    setStartDate('');
+    setEndDate('');
   };
 
   // Stats Logic
@@ -57,36 +89,8 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-200">
-        {[
-          { id: 'overview', label: 'Overview' },
-          { id: 'approvals', label: 'Approvals', count: pendingStudents.length, alert: true },
-          { id: 'students', label: 'Students', count: approvedStudents.length },
-          { id: 'reports', label: 'Reports' }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
-              activeTab === tab.id 
-                ? 'border-indigo-600 text-indigo-600' 
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && tab.count > 0 && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                tab.alert ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'overview' && (
+      
+      {view === 'overview' && (
         <div className="space-y-8">
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -112,6 +116,8 @@ const AdminDashboard: React.FC = () => {
               trend="neutral"
               icon={<AlertOctagon className="w-5 h-5 text-amber-600" />} 
               urgent={pendingStudents.length > 0}
+              onClick={() => onNavigate('approvals')}
+              clickable
             />
           </div>
 
@@ -120,7 +126,12 @@ const AdminDashboard: React.FC = () => {
             <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="font-bold text-slate-800">Department Performance</h3>
-                <button className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition">View Details</button>
+                <button 
+                  onClick={() => onNavigate('students')}
+                  className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full hover:bg-indigo-100 transition"
+                >
+                  View Directory
+                </button>
               </div>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -141,7 +152,7 @@ const AdminDashboard: React.FC = () => {
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
               <h3 className="font-bold text-slate-800 mb-6">Daily Attendance</h3>
-              <div className="flex-1 flex items-center justify-center relative">
+              <div className="flex-1 flex items-center justify-center relative cursor-pointer" onClick={() => onNavigate('reports')}>
                  <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
@@ -188,7 +199,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'approvals' && (
+      {view === 'approvals' && (
         <Card title="Pending Registration Requests" icon={<AlertOctagon className="w-5 h-5 text-amber-500" />}>
            <div className="overflow-x-auto">
              <table className="w-full text-left border-collapse">
@@ -226,7 +237,7 @@ const AdminDashboard: React.FC = () => {
                           </span>
                        </td>
                        <td className="p-4 text-right">
-                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <div className="flex justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                            <button onClick={() => handleApprove(student.id, true)} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 shadow-sm transition-all">
                              <Check className="w-3 h-3" /> Approve
                            </button>
@@ -244,7 +255,7 @@ const AdminDashboard: React.FC = () => {
         </Card>
       )}
 
-      {activeTab === 'students' && (
+      {view === 'students' && (
         <Card title="Student Directory" icon={<Users className="w-5 h-5 text-indigo-500" />}>
            <div className="overflow-x-auto">
              <table className="w-full text-left">
@@ -257,13 +268,18 @@ const AdminDashboard: React.FC = () => {
                  </tr>
                </thead>
                <tbody className="divide-y divide-slate-50">
-                 {approvedStudents.map(student => (
+                 {approvedStudents.length === 0 ? (
+                   <tr><td colSpan={4} className="p-8 text-center text-slate-400 text-sm">No approved students enrolled.</td></tr>
+                 ) : approvedStudents.map(student => (
                    <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
                      <td className="p-4">
                        <div className="flex items-center gap-3">
                          <div className="relative">
-                            <img src={student.faceEmbeddings} alt="" className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-100" />
-                            <div className="absolute inset-0 rounded-full shadow-inner"></div>
+                            {student.faceEmbeddings ? (
+                              <img src={student.faceEmbeddings} alt="" className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-100" />
+                            ) : (
+                              <div className="w-9 h-9 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 text-xs font-bold">{student.name.charAt(0)}</div>
+                            )}
                          </div>
                          <div>
                             <p className="font-medium text-slate-900 text-sm">{student.name}</p>
@@ -275,7 +291,7 @@ const AdminDashboard: React.FC = () => {
                      <td className="p-4 text-sm text-slate-600">{student.department} / {student.year}</td>
                      <td className="p-4 text-right">
                        <button 
-                        onClick={() => { if(window.confirm("Delete student?")) handleApprove(student.id, false); }}
+                        onClick={() => { if(window.confirm("Are you sure you want to delete this student profile?")) handleApprove(student.id, false); }}
                         className="p-2 hover:bg-red-50 hover:text-red-600 rounded-lg text-slate-400 transition-colors"
                        >
                          <Trash2 className="w-4 h-4" />
@@ -289,56 +305,155 @@ const AdminDashboard: React.FC = () => {
         </Card>
       )}
 
-      {activeTab === 'reports' && (
-        <Card title="Attendance Logs" icon={<Filter className="w-5 h-5 text-blue-500" />} action={<button onClick={exportCSV} className="text-sm font-medium text-indigo-600 hover:underline flex items-center gap-1"><Download className="w-4 h-4" /> CSV</button>}>
-           <div className="overflow-x-auto">
-             <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
-                  <th className="p-4 font-semibold">Time</th>
-                  <th className="p-4 font-semibold">Student</th>
-                  <th className="p-4 font-semibold">Subject</th>
-                  <th className="p-4 font-semibold">Confidence</th>
-                  <th className="p-4 font-semibold text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {attendance.slice().reverse().map(record => (
-                  <tr key={record.id} className="hover:bg-slate-50">
-                    <td className="p-4 text-sm text-slate-500 font-mono">
-                      {new Date(record.timestamp).toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', month: 'short', day: 'numeric' })}
-                    </td>
-                    <td className="p-4 font-medium text-sm text-slate-900">{record.studentName}</td>
-                    <td className="p-4 text-sm text-slate-600">
-                      <span className="inline-block bg-slate-100 px-2 py-0.5 rounded text-xs font-semibold">{record.subject}</span>
-                    </td>
-                    <td className="p-4 text-sm text-slate-500">
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500" style={{ width: `${record.verificationConfidence}%` }} />
-                        </div>
-                        <span className="text-xs">{Math.round(record.verificationConfidence)}%</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-right">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                        {record.status}
-                      </span>
-                    </td>
+      {view === 'reports' && (
+        <div className="space-y-4">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              <div className="flex-1 space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                  <Search className="w-3 h-3" /> Student Name
+                </label>
+                <input 
+                  type="text" 
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  placeholder="Filter by name..."
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                  <Calendar className="w-3 h-3" /> From
+                </label>
+                <input 
+                  type="date" 
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                  <Calendar className="w-3 h-3" /> To
+                </label>
+                <input 
+                  type="date" 
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+              <button 
+                onClick={resetFilters}
+                className="p-2.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
+                title="Reset Filters"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <Card 
+            title={`Daily Attendance Logs (${filteredAttendance.length})`} 
+            icon={<Filter className="w-5 h-5 text-blue-500" />} 
+            action={
+              <button 
+                onClick={exportCSV} 
+                disabled={filteredAttendance.length === 0}
+                className={`text-sm font-medium flex items-center gap-1 ${filteredAttendance.length === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-indigo-600 hover:underline'}`}
+              >
+                <Download className="w-4 h-4" /> Export CSV
+              </button>
+            }
+          >
+             <div className="overflow-x-auto">
+               <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                    <th className="p-4 font-semibold">Time</th>
+                    <th className="p-4 font-semibold">Student</th>
+                    <th className="p-4 font-semibold">Department</th>
+                    <th className="p-4 font-semibold">Confidence</th>
+                    <th className="p-4 font-semibold text-right">Status</th>
                   </tr>
-                ))}
-              </tbody>
-             </table>
-           </div>
-        </Card>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredAttendance.length === 0 ? (
+                     <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-sm">No matching records found.</td></tr>
+                  ) : filteredAttendance.map(record => (
+                    <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 text-sm text-slate-500 font-mono">
+                        {new Date(record.timestamp).toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="p-4 font-medium text-sm text-slate-900">{record.studentName}</td>
+                      <td className="p-4 text-sm text-slate-600">{record.department}</td>
+                      <td className="p-4 text-sm text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-500" style={{ width: `${record.verificationConfidence}%` }} />
+                          </div>
+                          <span className="text-xs">{Math.round(record.verificationConfidence)}%</span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-right">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          {record.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+               </table>
+             </div>
+          </Card>
+        </div>
+      )}
+
+      {view === 'settings' && (
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <Card title="General Settings" icon={<Filter className="w-5 h-5 text-slate-500" />}>
+               <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                     <div>
+                        <p className="font-semibold text-sm text-slate-800">System Notifications</p>
+                        <p className="text-xs text-slate-500">Receive alerts for new registrations</p>
+                     </div>
+                     <div className="w-10 h-6 bg-indigo-600 rounded-full relative cursor-pointer"><div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" /></div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                     <div>
+                        <p className="font-semibold text-sm text-slate-800">Auto-Approval</p>
+                        <p className="text-xs text-slate-500">Automatically approve high-confidence matches</p>
+                     </div>
+                     <div className="w-10 h-6 bg-slate-200 rounded-full relative cursor-pointer"><div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" /></div>
+                  </div>
+               </div>
+            </Card>
+            <Card title="Data Management" icon={<Trash2 className="w-5 h-5 text-red-500" />}>
+               <div className="p-6">
+                  <p className="text-sm text-slate-600 mb-4">
+                     Resetting the database will remove all students and attendance records. This action cannot be undone.
+                  </p>
+                  <button 
+                     onClick={() => { if(window.confirm("WARNING: This will wipe all data. Continue?")) { db.clearData(); setRefresh(prev => prev + 1); } }}
+                     className="px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm font-semibold hover:bg-red-100 transition-colors w-full flex items-center justify-center gap-2"
+                  >
+                     <Trash2 className="w-4 h-4" /> Clear All Database Records
+                  </button>
+               </div>
+            </Card>
+         </div>
       )}
     </div>
   );
 };
 
 // UI Components for Dashboard
-const StatCard = ({ title, value, subValue, change, trend, icon, urgent }: any) => (
-  <div className={`p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md ${urgent ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+const StatCard = ({ title, value, subValue, change, trend, icon, urgent, onClick, clickable }: any) => (
+  <div 
+    onClick={clickable ? onClick : undefined}
+    className={`p-6 rounded-2xl border shadow-sm transition-all hover:shadow-md ${urgent ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'} ${clickable ? 'cursor-pointer active:scale-95' : ''}`}
+  >
     <div className="flex items-start justify-between mb-4">
       <div className={`p-2 rounded-lg ${urgent ? 'bg-amber-100' : 'bg-slate-50'}`}>
         {icon}

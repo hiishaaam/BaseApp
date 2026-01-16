@@ -1,25 +1,31 @@
 import React from 'react';
 import { COLLEGE_NAME, APP_NAME } from '../constants';
-import { LogOut, ShieldCheck, LayoutDashboard, Users, FileText, Settings, Fingerprint, Bell, Search, Menu } from 'lucide-react';
-import { UserRole } from '../types';
+import { LogOut, ShieldCheck, LayoutDashboard, Users, FileText, Settings, Fingerprint, Bell, Search, AlertOctagon } from 'lucide-react';
+import { UserRole, AdminSection } from '../types';
+import { db } from '../services/dbService';
 
 interface LayoutProps {
   children: React.ReactNode;
   userRole?: UserRole;
   onLogout?: () => void;
   title?: string;
+  currentSection?: AdminSection;
+  onNavigate?: (section: AdminSection) => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) => {
+const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title, currentSection, onNavigate }) => {
   const isDashboard = userRole === UserRole.ADMIN || (userRole === UserRole.STUDENT && title);
   const isAdmin = userRole === UserRole.ADMIN;
+  
+  // Get pending count for badge
+  const pendingCount = isAdmin ? db.getStudents().filter(s => !s.isApproved).length : 0;
 
   if (isDashboard && isAdmin) {
     return (
       <div className="min-h-screen bg-slate-50 font-sans flex text-slate-900">
         {/* Sidebar */}
         <aside className="w-64 bg-slate-900 text-slate-300 flex-shrink-0 fixed h-full z-20 hidden md:flex flex-col border-r border-slate-800">
-          <div className="h-16 flex items-center px-6 border-b border-slate-800">
+          <div className="h-16 flex items-center px-6 border-b border-slate-800 cursor-pointer" onClick={() => onNavigate && onNavigate('overview')}>
             <div className="flex items-center gap-2 text-white">
               <div className="bg-indigo-600 p-1.5 rounded-lg shadow-lg shadow-indigo-500/20">
                 <Fingerprint className="w-5 h-5" />
@@ -32,14 +38,41 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
             <div className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Overview
             </div>
-            <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active />
-            <NavItem icon={<Users className="w-5 h-5" />} label="Students" />
-            <NavItem icon={<FileText className="w-5 h-5" />} label="Reports" />
+            <NavItem 
+              icon={<LayoutDashboard className="w-5 h-5" />} 
+              label="Dashboard" 
+              active={currentSection === 'overview'} 
+              onClick={() => onNavigate?.('overview')}
+            />
+            <NavItem 
+              icon={<AlertOctagon className="w-5 h-5" />} 
+              label="Approvals" 
+              active={currentSection === 'approvals'} 
+              onClick={() => onNavigate?.('approvals')}
+              badge={pendingCount > 0 ? pendingCount : undefined}
+            />
+            <NavItem 
+              icon={<Users className="w-5 h-5" />} 
+              label="Students" 
+              active={currentSection === 'students'} 
+              onClick={() => onNavigate?.('students')}
+            />
+            <NavItem 
+              icon={<FileText className="w-5 h-5" />} 
+              label="Reports" 
+              active={currentSection === 'reports'} 
+              onClick={() => onNavigate?.('reports')}
+            />
             
             <div className="px-3 mt-8 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Configuration
             </div>
-            <NavItem icon={<Settings className="w-5 h-5" />} label="Settings" />
+            <NavItem 
+              icon={<Settings className="w-5 h-5" />} 
+              label="Settings" 
+              active={currentSection === 'settings'} 
+              onClick={() => onNavigate?.('settings')}
+            />
           </div>
 
           <div className="p-4 border-t border-slate-800">
@@ -58,7 +91,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
           {/* Top Header */}
           <header className="h-16 bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-0 z-10 px-4 sm:px-8 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold text-slate-800">{title || 'Dashboard'}</h1>
+              <h1 className="text-xl font-bold text-slate-800 capitalize">{currentSection || title || 'Dashboard'}</h1>
             </div>
             <div className="flex items-center gap-4">
               <div className="relative hidden sm:block">
@@ -73,7 +106,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
                 <Bell className="w-5 h-5" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
               </button>
-              <div className="h-8 w-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm">
+              <div className="h-8 w-8 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-sm cursor-pointer" title="Admin">
                 AD
               </div>
             </div>
@@ -89,7 +122,7 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
     );
   }
 
-  // Student Dashboard Layout (Simplified) or Transactional Layout
+  // Student Dashboard Layout or Generic
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 relative">
       {/* Background Texture */}
@@ -135,10 +168,18 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
   );
 };
 
-const NavItem = ({ icon, label, active = false }: { icon: any, label: string, active?: boolean }) => (
-  <button className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+const NavItem = ({ icon, label, active = false, onClick, badge }: { icon: any, label: string, active?: boolean, onClick?: () => void, badge?: number }) => (
+  <button 
+    onClick={onClick}
+    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+  >
     {icon}
-    <span>{label}</span>
+    <span className="flex-1 text-left">{label}</span>
+    {badge !== undefined && (
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${active ? 'bg-white text-indigo-600' : 'bg-indigo-500 text-white'}`}>
+        {badge}
+      </span>
+    )}
   </button>
 );
 
