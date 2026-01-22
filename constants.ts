@@ -16,7 +16,7 @@ export const MOCK_SUBJECTS: Subject[] = [
   { id: 'ec201', name: 'Digital Circuits', code: 'EC201', department: 'Electronics & Comm', startTime: '09:00', endTime: '10:00' },
 ];
 
-export const ADMIN_EMAIL = 'admin@college.edu';
-export const ADMIN_PASSWORD = 'admin'; // For demo purposes
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'admin@college.edu';
+export const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
 export const GEMINI_MODEL = 'gemini-3-flash-preview';
