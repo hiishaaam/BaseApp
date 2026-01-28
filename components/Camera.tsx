@@ -43,19 +43,26 @@ const Camera: React.FC<CameraProps> = ({ onCapture, autoCapture = false, isProce
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    
+    // Performance optimization: Scale down for speed
+    // 480p width is sufficient for face verification and much faster to upload/process
+    const scale =  Math.min(1, 640 / video.videoWidth); 
+    canvas.width = video.videoWidth * scale;
+    canvas.height = video.videoHeight * scale;
+
     const context = canvas.getContext('2d');
     if (context) {
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      onCapture(canvas.toDataURL('image/jpeg', 0.85));
+      // Reduce quality to 0.7 for smaller payload
+      onCapture(canvas.toDataURL('image/jpeg', 0.7)); 
     }
   }, [onCapture]);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
+    // Reduced Auto-capture delay to 1s for faster UX
     if (autoCapture && isReady && !isProcessing) {
-       timeout = setTimeout(capture, 2000);
+       timeout = setTimeout(capture, 1000); 
     }
     return () => clearTimeout(timeout);
   }, [autoCapture, isReady, capture, isProcessing]);
