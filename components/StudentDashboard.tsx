@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { AttendanceRecord } from '../types'; // Check if imported elsewhere, but I need explicit import
 import { db } from '../services/dbService';
 import { Student } from '../types';
 import { CheckCircle2, Clock, Calendar, BarChart2, Shield } from 'lucide-react';
@@ -9,7 +10,12 @@ interface Props {
 }
 
 const StudentDashboard: React.FC<Props> = ({ student }) => {
-  const allAttendance = db.getAttendance();
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  
+  useEffect(() => {
+    db.getAttendance().then(setAllAttendance);
+  }, []);
+
   const myAttendance = allAttendance.filter(a => a.studentId === student.id);
   const totalClasses = Math.max(myAttendance.length + 5, 20); // Mock target
   const percentage = Math.round((myAttendance.length / totalClasses) * 100);
@@ -29,8 +35,8 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
          
          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6">
             <div className="relative">
-              {student.faceEmbeddings ? (
-                <img src={student.faceEmbeddings} alt="Profile" className="w-24 h-24 rounded-2xl border-4 border-white/10 shadow-lg object-cover" />
+              {student.profileImageUrl ? (
+                <img src={student.profileImageUrl} alt="Profile" className="w-24 h-24 rounded-2xl border-4 border-white/10 shadow-lg object-cover" />
               ) : (
                 <div className="w-24 h-24 bg-indigo-500 rounded-2xl flex items-center justify-center text-2xl font-bold">
                   {student.name.charAt(0)}

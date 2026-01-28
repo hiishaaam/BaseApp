@@ -18,13 +18,15 @@ export const verifyFaceWithGemini = async (
   referenceImageBase64: string,
   capturedImageBase64: string
 ): Promise<VerificationResult> => {
-  if (!process.env.API_KEY) {
+  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+
+  if (!apiKey) {
     console.warn("No API KEY provided. Mocking success for demo.");
     return new Promise(resolve => setTimeout(() => resolve({ match: true, confidence: 95, message: "Mock Success" }), 1500));
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
     
     // We want a structured JSON response
     const schema = {

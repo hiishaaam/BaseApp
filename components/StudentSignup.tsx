@@ -35,19 +35,26 @@ const StudentSignup: React.FC<Props> = ({ onBack, onSuccess }) => {
     if (!faceImage) return;
 
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 1500)); // UX delay
+    
+    try {
+      // We pass the faceImage separately to the DB service to handle upload.
+      // The student object should not contain the image yet (it will be set after upload).
+      const studentData: any = {
+         id: crypto.randomUUID(),
+         ...formData,
+         faceEmbeddings: faceImage,
+         isApproved: false,
+         createdAt: new Date().toISOString()
+      };
 
-    const newStudent: Student = {
-      id: crypto.randomUUID(),
-      ...formData,
-      faceEmbeddings: faceImage,
-      isApproved: false,
-      createdAt: new Date().toISOString()
-    };
-
-    db.addStudent(newStudent);
-    setIsSubmitting(false);
-    onSuccess();
+      await db.addStudent(studentData);
+      onSuccess();
+    } catch (error: any) {
+      console.error("Signup Error:", error);
+      alert(`Registration Failed: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const departments = db.getDepartments();

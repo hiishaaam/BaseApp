@@ -7,7 +7,7 @@ interface CameraProps {
   isProcessing?: boolean;
 }
 
-const Camera: React.FC<CameraProps> = ({ onCapture, autoCapture = false, isProcessing = false }) => {
+const Camera: React.FC<CameraProps> = ({ onCapture, autoCapture = false, isProcessing = false, label }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -73,9 +73,23 @@ const Camera: React.FC<CameraProps> = ({ onCapture, autoCapture = false, isProce
       <canvas ref={canvasRef} className="hidden" />
       
       {/* Scanning Line Animation */}
-      {isReady && !isProcessing && (
+      {isReady && !isProcessing && autoCapture && (
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
            <div className="w-full h-1 bg-gradient-to-r from-transparent via-indigo-500/80 to-transparent absolute top-0 animate-scan shadow-[0_0_15px_rgba(99,102,241,0.5)]"></div>
+        </div>
+      )}
+
+      {/* Manual Capture Control */}
+      {isReady && !autoCapture && !isProcessing && (
+        <div className="absolute inset-x-0 bottom-6 flex flex-col items-center justify-center gap-2 z-20">
+           {label && <span className="text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full backdrop-blur-md mb-2">{label}</span>}
+           <button 
+             onClick={capture}
+             className="w-16 h-16 rounded-full border-4 border-white flex items-center justify-center group focus:outline-none focus:ring-4 focus:ring-indigo-500/50 transition-all"
+             type="button"
+           >
+             <div className="w-12 h-12 rounded-full bg-white group-active:scale-90 transition-transform" />
+           </button>
         </div>
       )}
     </div>

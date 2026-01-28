@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Layout from './components/Layout';
 import { ViewState, UserRole, Student } from './types';
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from './constants';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, MOCK_DEPARTMENTS, MOCK_TUTORS } from './constants';
 import { db } from './services/dbService'; // Keep db import to ensure init runs
 import FaceLogin from './components/FaceLogin';
 import StudentSignup from './components/StudentSignup';
@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('LANDING');
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; data?: any } | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [adminView, setAdminView] = useState('overview'); // State for sidebar navigation
   
   // Login Inputs
   const [email, setEmail] = useState('');
@@ -36,13 +37,34 @@ const App: React.FC = () => {
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 1. Check for Super Admin
     if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       setCurrentUser({ role: UserRole.ADMIN });
       setView('ADMIN_DASHBOARD');
       setLoginError('');
-    } else {
-      setLoginError('Invalid credentials');
+      return;
     }
+
+    // 2. Check for HOD Logic
+    const hod = MOCK_DEPARTMENTS.find((d: any) => d.hodEmail === email && d.hodPassword === password);
+    if (hod) {
+       setCurrentUser({ role: UserRole.HOD, department: hod.name, email: hod.hodEmail });
+       setView('ADMIN_DASHBOARD');
+       setLoginError('');
+       return;
+    }
+
+    // 3. Check for Tutor Logic
+    const tutor = MOCK_TUTORS.find((t: any) => t.email === email && t.password === password);
+    if (tutor) {
+       setCurrentUser({ role: UserRole.TUTOR, year: tutor.year, email: tutor.email });
+       setView('ADMIN_DASHBOARD');
+       setLoginError('');
+       return;
+    }
+
+    setLoginError('Invalid credentials');
   };
 
   const handleStudentLoginSuccess = (student: Student) => {
@@ -576,8 +598,14 @@ const App: React.FC = () => {
             userRole={currentUser?.role} 
             onLogout={handleLogout}
             title="Administrator"
+            currentView={adminView}
+            onNavigate={setAdminView}
           >
-            <AdminDashboard />
+            <AdminDashboard 
+              currentUser={currentUser}
+              view={adminView}
+              onViewChange={setAdminView}
+            />
           </Layout>
         );
 

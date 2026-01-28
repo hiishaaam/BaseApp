@@ -1,5 +1,7 @@
 export enum UserRole {
   ADMIN = 'ADMIN',
+  HOD = 'HOD',
+  TUTOR = 'TUTOR',
   STUDENT = 'STUDENT',
   GUEST = 'GUEST',
 }
@@ -18,7 +20,7 @@ export interface Student {
   department: string;
   year: string;
   section: string;
-  faceEmbeddings?: string; // Storing base64 of reference image for this demo
+  profileImageUrl?: string; // URL to the image in Supabase Storage
   isApproved: boolean;
   createdAt: string;
 }
@@ -47,12 +49,16 @@ export interface Subject {
 export interface Department {
   id: string;
   name: string;
+  hodEmail?: string;
+  hodPassword?: string;
 }
 
 export interface UserSession {
   role: UserRole;
   studentId?: string; // If student
   email?: string;
+  department?: string; // If HOD
+  year?: string; // If TUTOR
 }
 
 export type ViewState = 

@@ -8,13 +8,15 @@ interface LayoutProps {
   userRole?: UserRole;
   onLogout?: () => void;
   title?: string;
+  onNavigate?: (view: string) => void;
+  currentView?: string;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) => {
-  const isDashboard = userRole === UserRole.ADMIN || (userRole === UserRole.STUDENT && title);
-  const isAdmin = userRole === UserRole.ADMIN;
+const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title, onNavigate, currentView }) => {
+  const isDashboard = userRole === UserRole.ADMIN || userRole === UserRole.HOD || userRole === UserRole.TUTOR || (userRole === UserRole.STUDENT && title);
+  const isStaff = userRole === UserRole.ADMIN || userRole === UserRole.HOD || userRole === UserRole.TUTOR;
 
-  if (isDashboard && isAdmin) {
+  if (isDashboard && isStaff) {
     return (
       <div className="min-h-screen bg-slate-50 font-sans flex text-slate-900">
         {/* Sidebar */}
@@ -32,14 +34,34 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
             <div className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Overview
             </div>
-            <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" active />
-            <NavItem icon={<Users className="w-5 h-5" />} label="Students" />
-            <NavItem icon={<FileText className="w-5 h-5" />} label="Reports" />
+            <NavItem 
+              icon={<LayoutDashboard className="w-5 h-5" />} 
+              label="Dashboard" 
+              active={currentView === 'overview'} 
+              onClick={() => onNavigate?.('overview')} 
+            />
+            <NavItem 
+              icon={<Users className="w-5 h-5" />} 
+              label="Students" 
+              active={currentView === 'students'} 
+              onClick={() => onNavigate?.('students')} 
+            />
+            <NavItem 
+              icon={<FileText className="w-5 h-5" />} 
+              label="Reports" 
+              active={currentView === 'reports'} 
+              onClick={() => onNavigate?.('reports')} 
+            />
             
             <div className="px-3 mt-8 mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
               Configuration
             </div>
-            <NavItem icon={<Settings className="w-5 h-5" />} label="Settings" />
+            <NavItem 
+              icon={<Settings className="w-5 h-5" />} 
+              label="Settings" 
+              active={currentView === 'settings'} 
+              onClick={() => onNavigate?.('settings')} 
+            />
           </div>
 
           <div className="p-4 border-t border-slate-800">
@@ -135,8 +157,11 @@ const Layout: React.FC<LayoutProps> = ({ children, userRole, onLogout, title }) 
   );
 };
 
-const NavItem = ({ icon, label, active = false }: { icon: any, label: string, active?: boolean }) => (
-  <button className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+const NavItem = ({ icon, label, active = false, onClick }: { icon: any, label: string, active?: boolean, onClick?: () => void }) => (
+  <button 
+    onClick={onClick}
+    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${active ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+  >
     {icon}
     <span>{label}</span>
   </button>
