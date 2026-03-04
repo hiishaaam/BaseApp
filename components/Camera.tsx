@@ -60,9 +60,9 @@ const Camera: React.FC<CameraProps> = ({ onCapture, autoCapture = false, isProce
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
-    // Reduced Auto-capture delay to 1s for faster UX
+    // Reduced Auto-capture delay to 1s for faster UX - Wait, increasing to 4s to save quota during dev
     if (autoCapture && isReady && !isProcessing) {
-       timeout = setTimeout(capture, 1000); 
+       timeout = setTimeout(capture, 4000); 
     }
     return () => clearTimeout(timeout);
   }, [autoCapture, isReady, capture, isProcessing]);

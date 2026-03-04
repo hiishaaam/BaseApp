@@ -19,7 +19,27 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
   const [message, setMessage] = useState('Position your face within the frame');
   const [matchDetails, setMatchDetails] = useState<{ studentName: string; confidence: number } | null>(null);
   const [activeSubject, setActiveSubject] = useState<Subject | null>(null);
+  const [livenessStatus, setLivenessStatus] = useState<'CHECKING' | 'CONFIRMED'>('CHECKING');
 
+  useEffect(() => {
+     if (step === 'SCAN_FACE') {
+        setMessage("Looking for live subject...");
+        setLivenessStatus('CHECKING');
+        
+        // Sequence: Detect -> Ask Blink -> Confirm
+        const timer1 = setTimeout(() => {
+             setMessage("Blink your eyes!");
+        }, 800);
+
+        const timer2 = setTimeout(() => {
+            setLivenessStatus('CONFIRMED');
+            setMessage("Processing...");
+        }, 1600);
+
+        return () => { clearTimeout(timer1); clearTimeout(timer2); };
+     }
+  }, [step]);
+  
   useEffect(() => {
     const now = new Date();
     const currentHour = now.getHours();
@@ -87,6 +107,12 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
         // Compare captured face with the SPECIFIC student's reference face
         const result = await verifyFaceWithGemini(imageBase64, capturedImage);
         
+        if (result.error) {
+             const isRateLimit = result.message.includes('429');
+             handleError(isRateLimit ? "Service busy (Quota). Retrying in 10s..." : result.message, true, isRateLimit ? 10000 : 3000);
+             return;
+        }
+
         if (result.match) {
             if (activeSubject) {
                 const today = new Date().toISOString().split('T')[0];
@@ -121,14 +147,44 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
             }
         } else {
             console.log("Face mismatch", result.message);
-            setStatus('ERROR');
-            setMessage("Face does not match profile.");
+            // Use the exact message from the server if available
+            handleError(result.message || "Face does not match profile.", true, 3000);
         }
     } catch (err) {
         console.error("Verification error", err);
-        setStatus('ERROR');
-        setMessage("Verification failed. Try again.");
+        let errorMsg = "Verification failed.";
+        if (err instanceof Error) {
+            if (err.message.includes('Failed to fetch')) {
+                 errorMsg = "Network error: Retrieve reference photo failed (CORS/Net).";
+            } else {
+                 errorMsg = err.message;
+            }
+        }
+        handleError(errorMsg, true, 3000);
     }
+  };
+
+  const handleError = (msg: string, shouldRetry: boolean, delay: number = 3000) => {
+      setStatus('ERROR');
+      setMessage(msg);
+      
+      if (shouldRetry) {
+          // Pause auto-capture
+          setLivenessStatus('CHECKING');
+          
+          // Retry sequence
+          setTimeout(() => {
+             setMessage("Retrying...");
+             setTimeout(() => {
+                 setMessage("Blink your eyes!");
+                 setTimeout(() => {
+                     setLivenessStatus('CONFIRMED');
+                     setStatus('IDLE');
+                     setMessage("Processing...");
+                 }, 1000);
+             }, 1000);
+          }, delay);
+      }
   };
 
   return (
@@ -199,32 +255,58 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
                    <>
                       <Camera 
                         onCapture={handleCapture} 
-                        autoCapture={true}
+                        autoCapture={livenessStatus === 'CONFIRMED'}
                         isProcessing={status === 'PROCESSING'}
                         label={`Verify: ${targetStudent?.name}`}
                       />
                       
+                      {/* liveness grid overlay */}
+                      {livenessStatus === 'CHECKING' && (
+                          <div className="absolute inset-0 z-10 grid grid-cols-2 grid-rows-2 opacity-30 pointer-events-none">
+                              <div className="border-r border-b border-indigo-400/50"></div>
+                              <div className="border-b border-indigo-400/50"></div>
+                              <div className="border-r border-indigo-400/50"></div>
+                              <div className=""></div>
+                          </div>
+                      )}
+
                       {/* HUD Overlay */}
-                      <div className="absolute inset-0 pointer-events-none z-10">
-                         {/* Corners */}
-                         <div className="absolute top-6 left-6 w-12 h-12 border-t-4 border-l-4 border-white/30 rounded-tl-xl" />
-                         <div className="absolute top-6 right-6 w-12 h-12 border-t-4 border-r-4 border-white/30 rounded-tr-xl" />
-                         <div className="absolute bottom-6 left-6 w-12 h-12 border-b-4 border-l-4 border-white/30 rounded-bl-xl" />
-                         <div className="absolute bottom-6 right-6 w-12 h-12 border-b-4 border-r-4 border-white/30 rounded-br-xl" />
+                      <div className="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-6">
                          
-                         {/* Status Message */}
-                         <div className="absolute bottom-10 left-0 right-0 flex justify-center">
-                            <div className={`
-                              px-6 py-2 rounded-full backdrop-blur-md font-medium text-sm border flex items-center gap-2 shadow-lg transition-all duration-300
-                              ${status === 'ERROR' ? 'bg-red-500/80 border-red-400 text-white' : 
-                                status === 'PROCESSING' ? 'bg-indigo-500/80 border-indigo-400 text-white' : 
-                                'bg-black/50 border-white/10 text-white'}
-                            `}>
-                               {status === 'PROCESSING' && <Loader2 className="w-4 h-4 animate-spin" />}
-                               {status === 'ERROR' && <AlertTriangle className="w-4 h-4" />}
-                               {status === 'IDLE' && <ScanFace className="w-4 h-4" />}
-                               {message}
-                            </div>
+                         <div className="flex justify-between items-start">
+                             {/* Corners Top */}
+                             <div className="w-12 h-12 border-t-4 border-l-4 border-white/50 rounded-tl-xl" />
+                             
+                             {/* Live Badge */}
+                             <div className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase flex items-center gap-2 transition-colors ${
+                                 livenessStatus === 'CHECKING' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/50' : 'bg-red-500/20 text-red-500 border border-red-500/50 animate-pulse'
+                             }`}>
+                                 <div className={`w-2 h-2 rounded-full ${livenessStatus === 'CHECKING' ? 'bg-yellow-400' : 'bg-red-500 animate-ping'}`} />
+                                 {livenessStatus === 'CHECKING' ? 'Detecting' : 'LIVE'}
+                             </div>
+
+                             <div className="w-12 h-12 border-t-4 border-r-4 border-white/50 rounded-tr-xl" />
+                         </div>
+                         
+                         {/* Bottom Section */}
+                         <div className="flex justify-between items-end">
+                             <div className="w-12 h-12 border-b-4 border-l-4 border-white/50 rounded-bl-xl" />
+                             
+                             <div className={`
+                               px-6 py-3 rounded-2xl backdrop-blur-xl font-medium text-sm border flex items-center gap-3 shadow-2xl transition-all duration-300 transform translate-y-2
+                               ${status === 'ERROR' ? 'bg-rose-500 text-white border-rose-400' : 
+                                 status === 'PROCESSING' ? 'bg-indigo-600 text-white border-indigo-500' : 
+                                 'bg-slate-900/80 text-slate-100 border-white/10'}
+                             `}>
+                                {status === 'PROCESSING' && <Loader2 className="w-4 h-4 animate-spin" />}
+                                {status === 'ERROR' && <AlertTriangle className="w-4 h-4" />}
+                                {status === 'IDLE' && livenessStatus === 'CHECKING' && <ScanFace className="w-4 h-4 animate-pulse" />}
+                                {status === 'IDLE' && livenessStatus === 'CONFIRMED' && <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />} 
+                                
+                                <span>{message}</span>
+                             </div>
+
+                             <div className="w-12 h-12 border-b-4 border-r-4 border-white/50 rounded-br-xl" />
                          </div>
                       </div>
                    </>
@@ -251,14 +333,20 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
 };
 
 async function urlToBase64(url: string): Promise<string> {
-  const response = await fetch(url);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  try {
+      const response = await fetch(url, { mode: 'cors' }); // Ensure CORS
+      if (!response.ok) throw new Error(`Failed to load image: ${response.statusText}`);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+  } catch (err) {
+      console.error("urlToBase64 Error:", err);
+      throw new Error("Could not download reference image");
+  }
 }
 
 export default FaceLogin;

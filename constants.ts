@@ -26,4 +26,4 @@ export const MOCK_SUBJECTS: Subject[] = [
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'admin@college.edu';
 export const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
-export const GEMINI_MODEL = 'gemini-3-flash-preview';
+export const GEMINI_MODEL = 'gemini-2.5-flash';

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../services/supabase';
 import { db } from '../services/dbService';
 import { AttendanceRecord, Student } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -25,38 +26,63 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
 
   const [courseStrength, setCourseStrength] = useState<number | null>(null);
-
+  
   useEffect(() => {
-    Promise.all([db.getStudents(), db.getAttendance()]).then(([s, a]) => {
-      // Filter if HOD or Tutor
-      if (currentUser?.role === 'HOD' && currentUser.department) {
-        setStudents(s.filter(student => student.department === currentUser.department));
-        setAttendance(a.filter(record => record.department === currentUser.department));
-      } else if (currentUser?.role === 'TUTOR' && currentUser.year) {
-        // Find IDs of students in this year to filter attendance correctly
-        const yearStudentIds = s.filter(student => student.year.toString() === currentUser.year).map(stu => stu.id);
-        
-        setStudents(s.filter(student => student.year.toString() === currentUser.year));
-        setAttendance(a.filter(record => yearStudentIds.includes(record.studentId)));
+    // Initial Fetch
+    const fetchData = () => {
+       Promise.all([db.getStudents(), db.getAttendance()]).then(([s, a]) => {
+        // Filter if HOD or Tutor
+        if (currentUser?.role === 'HOD' && currentUser.department) {
+          setStudents(s.filter(student => student.department === currentUser.department));
+          setAttendance(a.filter(record => record.department === currentUser.department));
+        } else if (currentUser?.role === 'TUTOR' && currentUser.year) {
+          const yearStudentIds = s.filter(student => student.year.toString() === currentUser.year).map(stu => stu.id);
+          setStudents(s.filter(student => student.year.toString() === currentUser.year));
+          setAttendance(a.filter(record => yearStudentIds.includes(record.studentId)));
+          
+          db.getClassConfiguration("Computer Science", currentUser.year).then(config => {
+             if (config) setCourseStrength(config.total_students);
+          });
+        } else {
+          setStudents(s);
+          setAttendance(a);
+        }
+      });
+    };
 
-        // Fetch Course Strength
-        // We assume "Computer Science" for now since Tutor mock doesn't have department, 
-        // OR we just use a wildcard or fix the Tutor mock to have department.
-        // The mock tutors in constants.ts don't have department usually. 
-        // Let's assume a default department or pass it. 
-        // For this task, I'll pass "Computer Science" as a fallback or if I can get it from somewhere.
-        // Actually the previous prompt said "each year in each department".
-        // Let's assume for now we just use "Computer Science" as it is the main one used in mocks.
-        db.getClassConfiguration("Computer Science", currentUser.year).then(config => {
-           if (config) setCourseStrength(config.total_students);
+    fetchData();
+
+    // Real-time Subscriptions
+    const attendanceSubscription = supabase
+      .channel('public:attendance')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'attendance' }, (payload) => {
+        const newRecord = payload.new as AttendanceRecord;
+        // Simple client-side filter to verify if this record belongs in this view
+        setAttendance(prev => {
+             // Avoid duplicates
+             if (prev.find(r => r.id === newRecord.id)) return prev;
+             
+             // Filter logic (mirroring initial fetch)
+             if (currentUser?.role === 'HOD' && newRecord.department !== currentUser.department) return prev;
+             // Tutor filter is harder without student lookup, but for now accept it and let next refresh fix strictness
+             return [newRecord, ...prev];
         });
+      })
+      .subscribe();
 
-      } else {
-        setStudents(s);
-        setAttendance(a);
-      }
-    });
-  }, [refresh]);
+    const studentSubscription = supabase
+      .channel('public:students')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        // For students, the relation is complex (approvals, edits), easier to simply refetch
+        fetchData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(attendanceSubscription);
+      supabase.removeChannel(studentSubscription);
+    };
+  }, [refresh, currentUser]);
 
   const pendingStudents = students.filter(s => !s.isApproved);
   const approvedStudents = students.filter(s => s.isApproved);
@@ -102,22 +128,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
   };
 
   const exportCSV = () => {
-    const headers = ['Date', 'Name', 'Department', 'Subject', 'Status', 'Time'];
-    const rows = attendance.map(r => [
-      r.date,
-      r.studentName,
-      r.department,
-      r.subject,
-      r.status,
-      new Date(r.timestamp).toLocaleTimeString()
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const headers = ['Date', 'Time', 'Name', 'Admission No', 'Department', 'Subject', 'Status', 'Confidence'];
+    
+    const escapeCsv = (str: string) => `"${String(str).replace(/"/g, '""')}"`;
+    
+    const rows = attendance.map(r => {
+      const student = students.find(s => s.id === r.studentId);
+      return [
+        r.date,
+        new Date(r.timestamp).toLocaleTimeString(),
+        r.studentName,
+        student?.admissionNumber || 'N/A',
+        r.department,
+        r.subject,
+        r.status,
+        `${Math.round(r.verificationConfidence)}%`
+      ];
+    });
+
+    const csvContent = [
+        headers.join(','), 
+        ...rows.map(row => row.map(escapeCsv).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "attendance_report.csv");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `attendance_report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
   // Stats Logic
@@ -534,7 +575,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
                   </div>
                   
                   <div className="p-4 border border-slate-200 rounded-lg bg-indigo-50/50 border-indigo-100">
-                     <h4 className="font-semibold text-slate-900 mb-2">Course Strength</h4>
+                      <h4 className="font-semibold text-slate-900 mb-2">Course Strength</h4>
                      <p className="text-sm text-slate-500 mb-3">Total expected students for daily attendance calculation.</p>
                      <div className="flex items-center gap-3">
                         <input 
