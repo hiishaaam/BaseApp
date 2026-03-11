@@ -1,11 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GEMINI_MODEL } from '../constants';
 
-// Helper to strip data:image/xyz;base64, prefix safely
-const extractBase64 = (dataUrl: string) => {
-  const parts = dataUrl.split(',');
-  return parts.length > 1 ? parts[1] : dataUrl;
-};
+// Helper removed as we will pass URLs instead of base64
 
 export interface VerificationResult {
   match: boolean;
@@ -16,8 +12,8 @@ export interface VerificationResult {
 
 
 export const verifyFaceWithGemini = async (
-  referenceImageBase64: string,
-  capturedImageBase64: string
+  referenceImageUrl: string,
+  capturedImageUrl: string
 ): Promise<VerificationResult> => {
   
   // Use relative path - Vite proxy handles this in dev, Vercel handles it in prod
@@ -28,8 +24,9 @@ export const verifyFaceWithGemini = async (
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            referenceImage: extractBase64(referenceImageBase64),
-            capturedImage: extractBase64(capturedImageBase64)
+            referenceImage: referenceImageUrl,
+            capturedImage: capturedImageUrl,
+            isUrl: true
         })
     });
 

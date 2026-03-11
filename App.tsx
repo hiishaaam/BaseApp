@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { UserRole, Student } from './types';
+import { supabase } from './services/supabase';
 import FaceLogin from './components/FaceLogin';
 import StudentSignup from './components/StudentSignup';
 import AdminDashboard from './components/AdminDashboard';
@@ -17,7 +18,8 @@ const AppContent: React.FC = () => {
   // Wrapper for Navigation access inside components if needed, 
   // though we are using useNavigate hook in children now.
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
     // Navigate is handled by the component calling this or via return link
     // But since this function is passed down, we might need a way to redirect.

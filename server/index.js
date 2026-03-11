@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 import path from 'path';
+import fs from 'fs';
 
 // Load from project root .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -25,10 +26,28 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 
 app.post('/verify-face', async (req, res) => {
     try {
-        const { referenceImage, capturedImage } = req.body;
+        let { referenceImage, capturedImage, isUrl } = req.body;
 
         if (!referenceImage || !capturedImage) {
             return res.status(400).json({ error: "Missing images" });
+        }
+
+        if (isUrl) {
+            try {
+                const [refRes, capRes] = await Promise.all([
+                    fetch(referenceImage),
+                    fetch(capturedImage)
+                ]);
+                
+                const refBuffer = await refRes.arrayBuffer();
+                const capBuffer = await capRes.arrayBuffer();
+                
+                referenceImage = Buffer.from(refBuffer).toString('base64');
+                capturedImage = Buffer.from(capBuffer).toString('base64');
+            } catch (err) {
+                console.error("Image download error:", err);
+                return res.status(500).json({ error: "Failed to fetch images from URLs" });
+            }
         }
 
         if (!GEMINI_API_KEY) {
@@ -124,6 +143,25 @@ app.post('/verify-face', async (req, res) => {
         });
     }
 });
+
+// Serve frontend dist
+const distPath = path.join(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+    // Serve static files under /BaseApp
+    app.use('/BaseApp', express.static(distPath));
+    
+    // Fallback to index.html for SPA routing on /BaseApp/*
+    app.get(/^\/BaseApp(\/.*)?$/, (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+    
+    // Redirect root to /BaseApp
+    app.get('/', (req, res) => {
+        res.redirect('/BaseApp/');
+    });
+} else {
+    console.warn("⚠️ dist/ folder not found. Run 'npm run build' for the server to serve the frontend UI.");
+}
 
 app.listen(port, () => {
     console.log(`🔒 Security Proxy Server running at http://localhost:${port}`);

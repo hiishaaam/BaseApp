@@ -11,18 +11,34 @@ interface Props {
 
 const StudentDashboard: React.FC<Props> = ({ student }) => {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [workingDays, setWorkingDays] = useState(90); // Default to 90
+  const [courseStrength, setCourseStrength] = useState(0);
   
   useEffect(() => {
     db.getAttendance().then(setAllAttendance);
-  }, []);
+    db.getClassConfiguration(student.department, student.year, '1').then(conf => {
+       if (conf) {
+           setWorkingDays(conf.working_days || 90);
+           setCourseStrength(conf.total_students || 0);
+       }
+    });
+  }, [student]);
 
   const myAttendance = allAttendance.filter(a => a.studentId === student.id);
-  const totalClasses = Math.max(myAttendance.length + 5, 20); // Mock target
-  const percentage = Math.round((myAttendance.length / totalClasses) * 100);
+  
+  // Group by Subject
+  const subjectAttendance = myAttendance.reduce((acc, curr) => {
+      acc[curr.subject] = (acc[curr.subject] || 0) + 1;
+      return acc;
+  }, {} as Record<string, number>);
+
+  // Unique days present
+  const presentDays = new Set(myAttendance.map(a => a.date)).size;
+  const percentage = workingDays > 0 ? Math.round((presentDays / workingDays) * 100) : 0;
 
   const data = [
-    { name: 'Present', value: myAttendance.length },
-    { name: 'Absent', value: totalClasses - myAttendance.length },
+    { name: 'Present Days', value: presentDays },
+    { name: 'Absent Days', value: Math.max(0, workingDays - presentDays) },
   ];
 
   return (
@@ -95,31 +111,31 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
            
            <div className="grid grid-cols-2 gap-4 mt-4 text-center">
               <div className="p-3 bg-slate-50 rounded-xl">
-                 <p className="text-xs text-slate-500 font-medium uppercase">Attended</p>
-                 <p className="text-lg font-bold text-indigo-600">{myAttendance.length}</p>
+                 <p className="text-xs text-slate-500 font-medium uppercase">Days Present</p>
+                 <p className="text-lg font-bold text-indigo-600">{presentDays}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl">
-                 <p className="text-xs text-slate-500 font-medium uppercase">Missed</p>
-                 <p className="text-lg font-bold text-slate-400">{totalClasses - myAttendance.length}</p>
+                 <p className="text-xs text-slate-500 font-medium uppercase">Total Days</p>
+                 <p className="text-lg font-bold text-slate-400">{workingDays}</p>
               </div>
            </div>
         </div>
 
         {/* Recent Activity Feed */}
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
            <div className="flex items-center gap-2 mb-6">
              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><Clock className="w-5 h-5" /></div>
              <h3 className="font-bold text-slate-800">Recent Activity</h3>
            </div>
 
-           <div className="space-y-4">
+           <div className="space-y-4 max-h-[300px] overflow-auto">
               {myAttendance.length === 0 ? (
                 <div className="py-12 text-center text-slate-400">
                    <p>No attendance records found yet.</p>
                 </div>
               ) : (
                 myAttendance.slice().reverse().map((record) => (
-                   <div key={record.id} className="group flex items-start gap-4 p-4 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                   <div key={record.id} className="group flex items-start gap-4 p-4 mb-2 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                       <div className="flex-shrink-0 mt-1">
                          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 ring-4 ring-white">
                            <CheckCircle2 className="w-5 h-5" />
@@ -132,8 +148,38 @@ const StudentDashboard: React.FC<Props> = ({ student }) => {
                          </div>
                          <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {record.date}</span>
-                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(record.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                          </div>
+                      </div>
+                   </div>
+                ))
+              )}
+           </div>
+        </div>
+
+        {/* Semester Subject Wise Attendance */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+           <div className="flex items-center justify-between mb-6">
+             <div className="flex items-center gap-2">
+                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><BarChart2 className="w-5 h-5" /></div>
+                 <h3 className="font-bold text-slate-800">Subject-wise Breakdown</h3>
+             </div>
+             <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">Semester 1</span>
+           </div>
+
+           <div className="space-y-4">
+              {Object.keys(subjectAttendance).length === 0 ? (
+                <div className="py-12 text-center text-slate-400">
+                   <p>No subject data yet.</p>
+                </div>
+              ) : (
+                Object.entries(subjectAttendance).map(([subject, count]) => (
+                   <div key={subject} className="mb-4">
+                      <div className="flex justify-between items-end mb-1">
+                         <h4 className="font-semibold text-slate-800 text-sm">{subject}</h4>
+                         <span className="text-xs font-bold text-indigo-600">{count} Classes</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                         <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, (Number(count) / (workingDays || 1)) * 100)}%` }} />
                       </div>
                    </div>
                 ))

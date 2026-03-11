@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { Student, AttendanceRecord, Subject, Department } from '../types';
+import { Student, AttendanceRecord, Subject, Department, ClassConfig } from '../types';
 import { MOCK_DEPARTMENTS, MOCK_SUBJECTS } from '../constants';
 
 class DBService {
@@ -147,6 +147,53 @@ class DBService {
     return data && data.length > 0;
   }
 
+  // Subjects (Timetable)
+  async getSubjectsAsync(department?: string, year?: string, semester?: string): Promise<Subject[]> {
+    let query = supabase.from('subjects').select('*');
+    if (department) query = query.eq('department', department);
+    if (year) query = query.eq('year', year);
+    if (semester) query = query.eq('semester', semester);
+    
+    const { data, error } = await query;
+    if (error) {
+      console.error('Error fetching subjects:', error);
+      return [];
+    }
+    
+    // Fallback for empty database/timetable so users can always mark attendance
+    if (!data || data.length === 0) {
+      const currentDay = new Date().getDay();
+      return [{
+        id: 'gen-attendance',
+        name: 'General Attendance',
+        code: 'GEN101',
+        department: department || 'Any',
+        year: year || '1',
+        semester: semester || '1',
+        dayOfWeek: currentDay,
+        startTime: '00:00',
+        endTime: '23:59'
+      }];
+    }
+    
+    return data || [];
+  }
+
+  async addSubject(subject: Subject): Promise<void> {
+    const { error } = await supabase.from('subjects').insert(subject);
+    if (error) throw error;
+  }
+
+  async updateSubject(subject: Subject): Promise<void> {
+    const { error } = await supabase.from('subjects').update(subject).eq('id', subject.id);
+    if (error) throw error;
+  }
+
+  async deleteSubject(id: string): Promise<void> {
+    const { error } = await supabase.from('subjects').delete().eq('id', id);
+    if (error) throw error;
+  }
+
   // Helpers
   // For static data, we can keep them sync if they are just constants, 
   // but for consistency with DB service patterns, let's allow them to be "used" as is,
@@ -163,33 +210,33 @@ class DBService {
     return MOCK_DEPARTMENTS;
   }
   
-  async getClassConfiguration(department: string, year: string): Promise<{ total_students: number } | null> {
-    const { data, error } = await supabase
-      .from('class_configurations')
-      .select('*')
-      .eq('department', department)
-      .eq('year', year)
-      .single();
-    
-    if (error) return null;
+  async getClassConfiguration(department: string, year: string, semester?: string): Promise<ClassConfig | null> {
+    let query = supabase.from('class_configurations').select('*').eq('department', department).eq('year', year);
+    if (semester) query = query.eq('semester', semester);
+
+    const { data, error } = await query.single();
+    if (error) {
+         if (error.code !== 'PGRST116') console.error("getClassConfig:", error);
+         return null;
+    }
     return data;
   }
 
-  async updateClassConfiguration(department: string, year: string, totalStudents: number): Promise<void> {
-    // Check if exists
-    const existing = await this.getClassConfiguration(department, year);
+  async updateClassConfiguration(config: ClassConfig): Promise<void> {
+    const existing = await this.getClassConfiguration(config.department, config.year, config.semester);
     
     if (existing) {
        const { error } = await supabase
         .from('class_configurations')
-        .update({ total_students: totalStudents })
-        .eq('department', department)
-        .eq('year', year);
+        .update(config)
+        .eq('department', config.department)
+        .eq('year', config.year)
+        .eq('semester', config.semester || existing.semester);
        if (error) throw error;
     } else {
        const { error } = await supabase
         .from('class_configurations')
-        .insert({ department, year, total_students: totalStudents });
+        .insert(config);
        if (error) throw error;
     }
   }

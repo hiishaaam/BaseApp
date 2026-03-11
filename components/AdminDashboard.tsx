@@ -4,6 +4,7 @@ import { db } from '../services/dbService';
 import { AttendanceRecord, Student } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Download, Check, X, Users, ClipboardCheck, AlertOctagon, Trash2, Filter, MoreHorizontal, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TimetableEditor } from './TimetableEditor';
 
 interface AdminDashboardProps {
   currentUser?: { role: any, department?: string, year?: string } | null;
@@ -186,6 +187,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
           { id: 'overview', label: 'Overview' },
           { id: 'approvals', label: 'Approvals', count: pendingStudents.length, alert: true },
           { id: 'students', label: 'Students', count: approvedStudents.length },
+          { id: 'timetable', label: 'Timetable' },
           { id: 'reports', label: 'Reports' },
           { id: 'settings', label: 'Settings' }
         ].map((tab) => (
@@ -514,6 +516,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
         </Card>
       )}
 
+      {activeTab === 'timetable' && (
+         <TimetableEditor />
+      )}
+
       {activeTab === 'settings' && (
         <div className="space-y-6">
            {currentUser?.role === 'ADMIN' && (
@@ -589,7 +595,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ currentUser, view = 'ov
                         <button 
                           onClick={async () => {
                              if (courseStrength && currentUser?.role === 'TUTOR' && currentUser.year) {
-                                await db.updateClassConfiguration("Computer Science", currentUser.year, courseStrength);
+                                await db.updateClassConfiguration({
+                                   department: "Computer Science", 
+                                   year: currentUser.year.toString(), 
+                                   total_students: courseStrength, 
+                                   working_days: 90, 
+                                   semester: "1"
+                                });
                                 alert("Course strength updated!");
                              }
                           }}

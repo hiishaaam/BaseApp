@@ -18,9 +18,9 @@ export const MOCK_TUTORS = [
 ];
 
 export const MOCK_SUBJECTS: Subject[] = [
-  { id: 'cs101', name: 'Data Structures', code: 'CS101', department: 'Computer Science', startTime: '09:00', endTime: '10:00' },
-  { id: 'cs102', name: 'Algorithms', code: 'CS102', department: 'Computer Science', startTime: '10:00', endTime: '11:00' },
-  { id: 'ec201', name: 'Digital Circuits', code: 'EC201', department: 'Electronics & Comm', startTime: '09:00', endTime: '10:00' },
+  { id: 'cs101', name: 'Data Structures', code: 'CS101', department: 'Computer Science', year: '1', semester: '1', dayOfWeek: 1, startTime: '09:00', endTime: '10:00' },
+  { id: 'cs102', name: 'Algorithms', code: 'CS102', department: 'Computer Science', year: '1', semester: '1', dayOfWeek: 2, startTime: '10:00', endTime: '11:00' },
+  { id: 'ec201', name: 'Digital Circuits', code: 'EC201', department: 'Electronics & Comm', year: '2', semester: '3', dayOfWeek: 1, startTime: '09:00', endTime: '10:00' },
 ];
 
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || 'admin@college.edu';

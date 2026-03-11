@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Shield } from 'lucide-react';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, MOCK_DEPARTMENTS, MOCK_TUTORS } from '../constants';
+import { ADMIN_EMAIL, MOCK_DEPARTMENTS, MOCK_TUTORS } from '../constants';
 import { UserRole } from '../types';
+import { supabase } from '../services/supabase';
+import { Loader2 } from 'lucide-react';
 
 interface AdminLoginProps {
   onLoginSuccess: (user: { role: UserRole; department?: string; year?: string; email?: string }) => void;
@@ -13,31 +15,50 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 1. Check for Super Admin
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      onLoginSuccess({ role: UserRole.ADMIN });
-      return;
-    }
+    setLoginError('');
+    setIsLoading(true);
 
-    // 2. Check for HOD Logic
-    const hod = MOCK_DEPARTMENTS.find((d: any) => d.hodEmail === email && d.hodPassword === password);
-    if (hod) {
-       onLoginSuccess({ role: UserRole.HOD, department: hod.name, email: hod.hodEmail });
-       return;
-    }
+    try {
+      // 1. Authenticate with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    // 3. Check for Tutor Logic
-    const tutor = MOCK_TUTORS.find((t: any) => t.email === email && t.password === password);
-    if (tutor) {
-       onLoginSuccess({ role: UserRole.TUTOR, year: tutor.year, email: tutor.email });
-       return;
-    }
+      if (error) {
+        setLoginError(error.message);
+        setIsLoading(false);
+        return;
+      }
 
-    setLoginError('Invalid credentials');
+      // 2. Map authenticated user to their Role
+      const authEmail = data.user?.email || email;
+
+      if (authEmail === ADMIN_EMAIL) {
+        onLoginSuccess({ role: UserRole.ADMIN, email: authEmail });
+      } else {
+        const hod = MOCK_DEPARTMENTS.find((d: any) => d.hodEmail === authEmail);
+        if (hod) {
+          onLoginSuccess({ role: UserRole.HOD, department: hod.name, email: authEmail });
+        } else {
+          const tutor = MOCK_TUTORS.find((t: any) => t.email === authEmail);
+          if (tutor) {
+             onLoginSuccess({ role: UserRole.TUTOR, year: tutor.year, email: authEmail });
+          } else {
+             // Default to standard admin if email doesn't match predefined roles but exists in Supabase
+             onLoginSuccess({ role: UserRole.ADMIN, email: authEmail });
+          }
+        }
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'An unexpected error occurred during login');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -76,8 +97,8 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
                <Shield className="w-4 h-4 mr-2" /> {loginError}
             </div>
           )}
-          <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-200">
-             Sign In
+          <button type="submit" disabled={isLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+             {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Sign In'}
           </button>
           <button type="button" onClick={() => navigate('/')} className="w-full text-slate-500 text-sm hover:text-slate-800 mt-4">
              &larr; Back to Website

@@ -27,10 +27,28 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { referenceImage, capturedImage } = req.body;
+    let { referenceImage, capturedImage, isUrl } = req.body;
 
     if (!referenceImage || !capturedImage) {
         return res.status(400).json({ error: "Missing images" });
+    }
+
+    if (isUrl) {
+        try {
+            const [refRes, capRes] = await Promise.all([
+                fetch(referenceImage),
+                fetch(capturedImage)
+            ]);
+            
+            const refBuffer = await refRes.arrayBuffer();
+            const capBuffer = await capRes.arrayBuffer();
+            
+            referenceImage = Buffer.from(refBuffer).toString('base64');
+            capturedImage = Buffer.from(capBuffer).toString('base64');
+        } catch (err) {
+            console.error("Image download error:", err);
+            return res.status(500).json({ error: "Failed to fetch images from URLs" });
+        }
     }
 
     const GEMINI_API_KEY = process.env.VITE_GOOGLE_API_KEY || process.env.GEMINI_API_KEY;

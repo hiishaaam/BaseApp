@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Camera from './Camera';
 import { db } from '../services/dbService';
+import { supabase } from '../services/supabase';
 import { verifyFaceWithGemini } from '../services/geminiService';
 import { AttendanceRecord, AttendanceStatus, Student, Subject } from '../types';
 import { CheckCircle2, AlertTriangle, X, Clock, ScanFace, Loader2 } from 'lucide-react';
@@ -41,15 +42,7 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
   }, [step]);
   
   useEffect(() => {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const subjects = db.getSubjects();
-    const subject = subjects.find(s => {
-      const startH = parseInt(s.startTime.split(':')[0]);
-      const endH = parseInt(s.endTime.split(':')[0]);
-      return currentHour >= startH && currentHour < endH;
-    });
-    setActiveSubject(subject || subjects[0]);
+    // We will dynamically fetch today's subjects when they log in to ensure accuracy.
   }, []);
 
   // Handle Admission Number Submit
@@ -67,17 +60,8 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
          return;
        }
 
-       // Check if already marked attendance for today's active subject
-       if (activeSubject) {
-         const today = new Date().toISOString().split('T')[0];
-         const hasMarked = await db.hasMarkedAttendance(student.id, activeSubject.code, today);
-         
-         if (hasMarked) {
-             // Already checked in, redirect to dashboard immediately
-             onSuccess(student);
-             return;
-         }
-       }
+       // Minimal check inside ID entry to check if any attendance was marked 
+       // We'll fully check during the capture phase when we get all subjects
 
        setTargetStudent(student);
        setStep('SCAN_FACE');
@@ -101,11 +85,24 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
     }
 
     try {
-        // Fetch the reference image as base64
-        const imageBase64 = await urlToBase64(targetStudent.profileImageUrl);
+        // Use bucket upload instead of base64 to avoid huge payloads and API limits
+        const blob = await fetch(capturedImage).then(r => r.blob());
+        const fileName = `temp_${Date.now()}_${targetStudent.id}.jpg`;
         
-        // Compare captured face with the SPECIFIC student's reference face
-        const result = await verifyFaceWithGemini(imageBase64, capturedImage);
+        const { error: uploadError } = await supabase.storage
+            .from('face-images')
+            .upload(fileName, blob, { contentType: 'image/jpeg' });
+            
+        if (uploadError) throw uploadError;
+        
+        const { data } = supabase.storage.from('face-images').getPublicUrl(fileName);
+        const capturedImageUrl = data.publicUrl;
+
+        // Compare using URLs
+        const result = await verifyFaceWithGemini(targetStudent.profileImageUrl, capturedImageUrl);
+        
+        // Clean up the temporary image
+        supabase.storage.from('face-images').remove([fileName]).catch(e => console.error("Temp cleanup failed", e));
         
         if (result.error) {
              const isRateLimit = result.message.includes('429');
@@ -114,37 +111,48 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
         }
 
         if (result.match) {
-            if (activeSubject) {
-                const today = new Date().toISOString().split('T')[0];
-                const hasMarked = await db.hasMarkedAttendance(targetStudent.id, activeSubject.code, today);
+            const today = new Date().toISOString().split('T')[0];
+            const currentDay = new Date().getDay(); // 0 is Sunday, 1 is Monday etc.
+            
+            // Get all subjects for this student's department and year for today
+            const allSubjects = await db.getSubjectsAsync(targetStudent.department, targetStudent.year);
+            const todaySubjects = allSubjects.filter(s => s.dayOfWeek === currentDay);
 
-                if (hasMarked) {
-                    setStatus('ERROR');
-                    setMessage(`Already checked in today.`);
-                    return;
-                }
+            if (todaySubjects.length === 0) {
+                setStatus('ERROR');
+                setMessage("No classes scheduled for you today.");
+                return;
+            }
 
+            // check if they already checked in today for the first subject
+            const hasMarked = await db.hasMarkedAttendance(targetStudent.id, todaySubjects[0].code, today);
+
+            if (hasMarked) {
+                setStatus('ERROR');
+                setMessage(`Already checked in today.`);
+                return;
+            }
+
+            // Mark attendance for all subjects today according to timetable
+            for (const subj of todaySubjects) {
                 const record: AttendanceRecord = {
                     id: crypto.randomUUID(),
                     studentId: targetStudent.id,
                     studentName: targetStudent.name,
                     department: targetStudent.department,
-                    subject: activeSubject.code,
+                    subject: subj.code,
                     date: today,
                     timestamp: new Date().toISOString(),
                     status: AttendanceStatus.PRESENT,
                     verificationConfidence: result.confidence
                 };
-                
                 await db.addAttendance(record);
-                setMatchDetails({ studentName: targetStudent.name, confidence: result.confidence });
-                setStatus('SUCCESS');
-                
-                setTimeout(() => onSuccess(targetStudent), 2500);
-            } else {
-                setStatus('ERROR');
-                setMessage("No active class session found.");
             }
+            
+            setMatchDetails({ studentName: targetStudent.name, confidence: result.confidence });
+            setStatus('SUCCESS');
+            
+            setTimeout(() => onSuccess(targetStudent), 2500);
         } else {
             console.log("Face mismatch", result.message);
             // Use the exact message from the server if available
@@ -190,18 +198,7 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-100px)] w-full max-w-4xl mx-auto p-6 animate-fade-in">
        
-       {/* Active Class Indicator */}
-       {activeSubject && (
-         <div className="mb-8 flex flex-col items-center gap-2 bg-white/60 backdrop-blur-md px-8 py-4 rounded-2xl border border-white/50 shadow-sm">
-            <div className="flex items-center gap-2 text-slate-500 text-sm font-medium mb-1">
-               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-               Active Session
-            </div>
-            <div className="text-xl font-bold text-slate-800">
-               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </div>
-         </div>
-       )}
+       {/* Removed active subject indicator, now marks full day */}
 
        <div className="relative w-full max-w-lg aspect-[3/4] md:aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl ring-8 ring-slate-100 dark:ring-slate-800">
          
@@ -332,21 +329,6 @@ const FaceLogin: React.FC<Props> = ({ onSuccess, onBack }) => {
   );
 };
 
-async function urlToBase64(url: string): Promise<string> {
-  try {
-      const response = await fetch(url, { mode: 'cors' }); // Ensure CORS
-      if (!response.ok) throw new Error(`Failed to load image: ${response.statusText}`);
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-  } catch (err) {
-      console.error("urlToBase64 Error:", err);
-      throw new Error("Could not download reference image");
-  }
-}
+// urlToBase64 removed: backend now fetches images directly using links
 
 export default FaceLogin;

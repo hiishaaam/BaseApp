@@ -42,8 +42,19 @@ export interface Subject {
   name: string;
   code: string;
   department: string;
+  year: string;
+  semester: string;
+  dayOfWeek: number; // 0 (Sun) - 6 (Sat)
   startTime: string; // HH:mm
   endTime: string; // HH:mm
+}
+
+export interface ClassConfig {
+  department: string;
+  year: string;
+  total_students: number;
+  working_days: number;
+  semester: string;
 }
 
 export interface Department {
